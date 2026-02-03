@@ -19,6 +19,22 @@ npm run dev
 Clerk will run in keyless mode automatically when no environment variables are
 present. You can sign in immediately and claim the app later.
 
+## Environment variables
+
+These are the relevant variables for Clerk + admin access:
+
+- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` (required for production builds)
+- `CLERK_SECRET_KEY` (required for server-side Clerk API calls)
+- `ADMIN_USER_IDS` (optional allowlist, comma-separated)
+
+Local usage:
+- For quick local dev, you can omit keys and use Clerk keyless mode.
+- For production-like local runs, add variables to `.env.local`.
+
+Cloudflare Workers usage:
+- Add the Clerk keys in Build configuration (build variables and secrets).
+- Add the same keys in Settings > Variables & Secrets for runtime.
+
 ## Cloudflare Workers (OpenNext)
 
 This project targets Cloudflare Workers using the `@opennextjs/cloudflare`
@@ -42,9 +58,34 @@ npm run deploy
 1. Create a Workers project and connect this repo.
 2. Ensure the Worker name in the Cloudflare dashboard matches the `name` in
    `wrangler.jsonc`.
-3. Set the deploy command to `npm run deploy`.
-4. Add build-time secrets for Clerk in Build configuration (build variables and
+3. Set the build command to `npx @opennextjs/cloudflare build`.
+4. Set the deploy command to `npx @opennextjs/cloudflare deploy`.
+5. (Optional) Set the non-production deploy command to
+   `npx @opennextjs/cloudflare upload` for preview builds.
+6. Add build-time secrets for Clerk in Build configuration (build variables and
    secrets). Add the same values in Settings > Variables & Secrets for runtime.
+
+### Workers Builds checklist
+
+- Build command: `npx @opennextjs/cloudflare build`
+- Deploy command: `npx @opennextjs/cloudflare deploy`
+- Preview command (optional): `npx @opennextjs/cloudflare upload`
+- Secrets in Build configuration and Settings > Variables & Secrets
+- Worker name matches `wrangler.jsonc`
+
+## Troubleshooting
+
+- Build fails with `Missing publishableKey`: the build environment does not see
+  `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`. Add it to Build configuration and
+  Settings > Variables & Secrets, then redeploy.
+- Build fails with `.open-next/worker.js` not found: the build command did not
+  run. Ensure the build command is `npx @opennextjs/cloudflare build` and the
+  deploy command is `npx @opennextjs/cloudflare deploy`.
+- Build fails with “routes not configured to run with the Edge Runtime”: that
+  means you are using Pages or `next-on-pages`. This repo targets Workers via
+  OpenNext and does not use Edge runtime.
+- Build fails with “Both middleware.ts and proxy.ts detected”: remove
+  `middleware.ts` and keep `proxy.ts` only (Next 16+).
 
 ## Admin access
 
