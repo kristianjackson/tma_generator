@@ -38,8 +38,10 @@ Cloudflare Workers usage:
 ## Cloudflare Workers (OpenNext)
 
 This project targets Cloudflare Workers using the `@opennextjs/cloudflare`
-adapter (Node.js runtime). The OpenNext CLI handles build, preview, and deploy
-workflows. Use the package scripts rather than raw `wrangler` commands.
+adapter (Node.js runtime). OpenNext currently supports Next.js 15.x (and the
+latest 14.x), so the app is pinned to Next 15.1.6 for deployment compatibility.
+The OpenNext CLI handles build, preview, and deploy workflows. Use the package
+scripts rather than raw `wrangler` commands.
 
 ### Local preview (Workers runtime)
 
@@ -84,8 +86,8 @@ npm run deploy
 - Build fails with “routes not configured to run with the Edge Runtime”: that
   means you are using Pages or `next-on-pages`. This repo targets Workers via
   OpenNext and does not use Edge runtime.
-- Build fails with “Both middleware.ts and proxy.ts detected”: remove
-  `middleware.ts` and keep `proxy.ts` only (Next 16+).
+- Deploy fails with a `createRequire`/`handler.mjs` error: this usually indicates
+  an unsupported Next.js version. Ensure Next is pinned to 15.x for OpenNext.
 
 ## Admin access
 
@@ -105,6 +107,7 @@ variable is omitted, any signed-in user can access `/admin`.
 - `app/protected/page.tsx` - server-rendered route using `auth()`
 - `app/protected/layout.tsx` - guards all `/protected` routes
 - `proxy.ts` - Clerk middleware
+- `middleware.ts` - middleware entrypoint for Next 15 (re-exports `proxy.ts`)
 - `open-next.config.ts` - OpenNext adapter config
 - `wrangler.jsonc` - Worker configuration
 - `.dev.vars` - local Workers env file
