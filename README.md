@@ -37,7 +37,6 @@ variable is omitted, any signed-in user can access `/admin`.
 - `app/protected/page.tsx` - server-rendered route using `auth()`
 - `app/protected/layout.tsx` - guards all `/protected` routes
 - `proxy.ts` - Clerk middleware
-- `middleware.ts` - Next.js entrypoint re-exporting Clerk middleware
 
 ## Cloudflare Pages
 
