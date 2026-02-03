@@ -49,7 +49,9 @@ export default async function AdminUsersPage({
   const filteredUsers = query
     ? sortedUsers.filter((user) => {
         const emailAddresses = user.emailAddresses
-          .map((address) => address.emailAddress.toLowerCase())
+          .map((address: { emailAddress: string }) =>
+            address.emailAddress.toLowerCase()
+          )
           .join(" ");
         const fullName = `${user.firstName ?? ""} ${user.lastName ?? ""}`
           .trim()
