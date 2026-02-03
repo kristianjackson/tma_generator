@@ -62,6 +62,13 @@ export default async function AdminUsersPage({
       })
     : sortedUsers;
   const totalPages = Math.max(1, Math.ceil(totalCount / limit));
+  const filteredCount = filteredUsers.length;
+  const rangeStart = filteredCount === 0 ? 0 : offset + 1;
+  const rangeEnd = offset + filteredCount;
+  const rangeLabel =
+    filteredCount === 0
+      ? `Showing 0 of ${totalCount} users.`
+      : `Showing users ${rangeStart}–${rangeEnd} of ${totalCount}.`;
 
   return (
     <main className="page">
@@ -69,8 +76,7 @@ export default async function AdminUsersPage({
         <p className="eyebrow">Admin</p>
         <h1>User Directory</h1>
         <p className="subhead">
-          Showing users {offset + 1}–{offset + filteredUsers.length} of{" "}
-          {totalCount}. Current user: {userId}
+          {rangeLabel} Current user: {userId}
         </p>
         <div className="toolbar">
           <form className="search" action="/admin" method="get">
@@ -105,7 +111,8 @@ export default async function AdminUsersPage({
               {filteredUsers.map((user) => {
                 const primaryEmail =
                   user.emailAddresses.find(
-                    (address) => address.id === user.primaryEmailAddressId
+                    (address: { id: string }) =>
+                      address.id === user.primaryEmailAddressId
                   )?.emailAddress ??
                   user.emailAddresses[0]?.emailAddress ??
                   "—";
