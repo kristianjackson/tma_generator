@@ -20,6 +20,9 @@ export default function Home() {
           <Link className="ghost link-button" href="/protected">
             Protected Page
           </Link>
+          <Link className="ghost link-button" href="/admin">
+            Admin Users
+          </Link>
         </div>
         <div className="card">
           <h2>What’s Next</h2>
