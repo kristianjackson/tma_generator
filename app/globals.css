@@ -346,6 +346,50 @@ button {
   max-width: 100%;
 }
 
+.meta-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 220px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.meta-stack strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.detail-item {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  background: white;
+}
+
+.detail-item span {
+  display: block;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.meta-text {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text);
+  word-break: break-all;
+}
+
 .avatar {
   width: 36px;
   height: 36px;

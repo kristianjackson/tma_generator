@@ -11,7 +11,8 @@
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
-    "ingest:pdfs": "sh scripts/ingest-pdfs.sh"
+    "ingest:pdfs": "sh scripts/ingest-pdfs.sh",
+    "ingest:pdfs:update": "sh scripts/ingest-pdfs.sh --mode update"
   },
   "dependencies": {
     "@clerk/nextjs": "6.37.1",

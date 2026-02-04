@@ -17,6 +17,9 @@ type TranscriptRow = {
   created_at: number;
   fears_json?: string | null;
   cast_json?: string | null;
+  themes_json?: string | null;
+  tags_json?: string | null;
+  locations_json?: string | null;
 };
 
 const getFirstValue = (value?: string | string[]) =>
@@ -27,6 +30,24 @@ const parseList = (value: string) =>
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+
+const parseJsonList = (value?: string | null) => {
+  if (!value) {
+    return [] as string[];
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [] as string[];
+  }
+};
+
+const formatJsonList = (value?: string | null) => {
+  const items = parseJsonList(value);
+  return items.length > 0 ? items.join(", ") : "—";
+};
 
 const chunkTranscript = (content: string, chunkSize = 1200) => {
   const chunks: string[] = [];
@@ -157,7 +178,7 @@ export default async function IngestionPage({
     const db = requireDb();
     const result = await db
       .prepare(
-        "SELECT t.id, t.title, t.season, t.episode, t.word_count, t.created_at, m.fears_json, m.cast_json FROM transcripts t LEFT JOIN transcript_metadata m ON t.id = m.transcript_id ORDER BY t.created_at DESC"
+        "SELECT t.id, t.title, t.season, t.episode, t.word_count, t.created_at, m.fears_json, m.cast_json, m.themes_json, m.tags_json, m.locations_json FROM transcripts t LEFT JOIN transcript_metadata m ON t.id = m.transcript_id ORDER BY t.created_at DESC"
       )
       .bind()
       .all<TranscriptRow>();
@@ -279,11 +300,11 @@ export default async function IngestionPage({
               <thead>
                 <tr>
                   <th>Title</th>
+                  <th>Actions</th>
                   <th>Season</th>
                   <th>Episode</th>
                   <th>Word count</th>
-                  <th>Fears</th>
-                  <th>Cast</th>
+                  <th>Metadata</th>
                   <th>Ingested</th>
                 </tr>
               </thead>
@@ -291,11 +312,41 @@ export default async function IngestionPage({
                 {transcripts.map((transcript) => (
                   <tr key={transcript.id}>
                     <td>{transcript.title}</td>
+                    <td>
+                      <Link
+                        className="ghost link-button"
+                        href={`/admin/ingestion/${transcript.id}`}
+                      >
+                        Edit
+                      </Link>
+                    </td>
                     <td>{transcript.season ?? "—"}</td>
                     <td>{transcript.episode ?? "—"}</td>
                     <td>{transcript.word_count}</td>
-                    <td>{transcript.fears_json ?? "—"}</td>
-                    <td>{transcript.cast_json ?? "—"}</td>
+                    <td>
+                      <div className="meta-stack">
+                        <span>
+                          <strong>Fears:</strong>{" "}
+                          {formatJsonList(transcript.fears_json)}
+                        </span>
+                        <span>
+                          <strong>Cast:</strong>{" "}
+                          {formatJsonList(transcript.cast_json)}
+                        </span>
+                        <span>
+                          <strong>Themes:</strong>{" "}
+                          {formatJsonList(transcript.themes_json)}
+                        </span>
+                        <span>
+                          <strong>Tags:</strong>{" "}
+                          {formatJsonList(transcript.tags_json)}
+                        </span>
+                        <span>
+                          <strong>Locations:</strong>{" "}
+                          {formatJsonList(transcript.locations_json)}
+                        </span>
+                      </div>
+                    </td>
                     <td>{new Date(transcript.created_at).toLocaleDateString("en-US")}</td>
                   </tr>
                 ))}

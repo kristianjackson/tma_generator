@@ -75,6 +75,23 @@ Notes:
 - Fears, cast, themes, tags, and locations are inserted as empty lists and can be edited in
   **Admin → Transcript ingestion** after import.
 
+### Cleaning + rechunking existing data
+
+If you notice page numbers, headers, or other PDF artifacts in chunk content, run:
+
+```
+bun run ingest:pdfs:update
+```
+
+This generates `data/ingest/rechunk.sql`, which updates transcript content and
+rebuilds chunk rows **without** touching your existing metadata.
+
+Then apply it:
+
+```
+wrangler d1 execute <DB_NAME> --file data/ingest/rechunk.sql --remote
+```
+
 
 Local usage:
 - For quick local dev, you can omit keys and use Clerk keyless mode.
@@ -163,6 +180,12 @@ skip persistence.
 
 Runs and saved versions are available under **History**.
 
+## AI-assisted metadata (optional)
+
+The transcript detail view includes an **AI suggestions** button. To enable it,
+configure a Workers AI binding named `AI` and (optionally) set `AI_MODEL` to the
+model ID you want to use. If `AI` is not configured, the UI will show a warning.
+
 ## Project structure
 
 - `app/` - App Router routes
@@ -175,6 +198,7 @@ Runs and saved versions are available under **History**.
 - `app/admin/settings/page.tsx` - admin settings + audit log view
 - `app/admin/audit-log.ts` - audit log helpers (KV-backed when configured)
 - `app/admin/ingestion/page.tsx` - transcript ingestion dashboard
+- `app/admin/ingestion/[id]/page.tsx` - edit transcript metadata
 - `migrations/001_init.sql` - D1 schema
 - `app/protected/page.tsx` - server-rendered route using `auth()`
 - `app/protected/layout.tsx` - guards all `/protected` routes
@@ -197,3 +221,4 @@ Runs and saved versions are available under **History**.
 - `app/generate/layout.tsx` - guards generator routes
 - `app/runs/page.tsx` - run history list
 - `app/runs/[id]/page.tsx` - run detail view
+- `scripts/ingest-pdfs.sh` - wrapper to run PDF ingestion with system Node

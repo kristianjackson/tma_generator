@@ -7,9 +7,15 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 const DEFAULT_INPUT = "./data/transcript_pdfs";
 const DEFAULT_OUTPUT = "./data/ingest";
+const DEFAULT_MODE = "insert";
 
 const parseArgs = (argv) => {
-  const args = { input: DEFAULT_INPUT, output: DEFAULT_OUTPUT, limit: null };
+  const args = {
+    input: DEFAULT_INPUT,
+    output: DEFAULT_OUTPUT,
+    limit: null,
+    mode: DEFAULT_MODE
+  };
 
   for (let i = 0; i < argv.length; i += 1) {
     const value = argv[i];
@@ -22,6 +28,10 @@ const parseArgs = (argv) => {
     } else if (value === "--limit" && argv[i + 1]) {
       const limit = Number.parseInt(argv[i + 1], 10);
       args.limit = Number.isNaN(limit) ? null : limit;
+      i += 1;
+    } else if (value === "--mode" && argv[i + 1]) {
+      const mode = String(argv[i + 1]).toLowerCase();
+      args.mode = mode === "update" ? "update" : "insert";
       i += 1;
     }
   }
@@ -65,6 +75,46 @@ const normalizeText = (text) =>
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 
+const isNoiseLine = (line) => {
+  const trimmed = line.trim();
+
+  if (!trimmed) {
+    return false;
+  }
+
+  if (/^\d{1,3}$/.test(trimmed)) {
+    return true;
+  }
+
+  if (/^Page\s+\d+(\s+of\s+\d+)?$/i.test(trimmed)) {
+    return true;
+  }
+
+  if (/^MAG\s*\d{1,3}(\s*[-–].*)?$/i.test(trimmed)) {
+    return true;
+  }
+
+  if (/^The Magnus Archives$/i.test(trimmed)) {
+    return true;
+  }
+
+  if (/Transcript Re-formatted Template/i.test(trimmed)) {
+    return true;
+  }
+
+  if (/^converted$/i.test(trimmed)) {
+    return true;
+  }
+
+  return false;
+};
+
+const cleanTranscriptText = (rawText) => {
+  const lines = rawText.split(/\r?\n/);
+  const cleaned = lines.filter((line) => !isNoiseLine(line));
+  return normalizeText(cleaned.join("\n"));
+};
+
 const chunkTranscript = (content, chunkSize = 1200) => {
   const chunks = [];
   let buffer = "";
@@ -86,7 +136,14 @@ const chunkTranscript = (content, chunkSize = 1200) => {
     chunks.push(buffer.trim());
   }
 
-  return chunks;
+  return chunks.filter((chunk) => {
+    const wordCount = chunk.split(/\s+/).filter(Boolean).length;
+    if (wordCount >= 6) {
+      return true;
+    }
+
+    return /statement/i.test(chunk);
+  });
 };
 
 const sqlValue = (value) => {
@@ -150,7 +207,7 @@ const extractText = async (filePath) => {
 };
 
 const main = async () => {
-  const { input, output, limit } = parseArgs(process.argv.slice(2));
+  const { input, output, limit, mode } = parseArgs(process.argv.slice(2));
   const inputDir = path.resolve(input);
   const outputDir = path.resolve(output);
   const files = (await fs.readdir(inputDir)).filter((file) =>
@@ -170,7 +227,7 @@ const main = async () => {
   for (const filename of selectedFiles) {
     const filePath = path.join(inputDir, filename);
     const rawText = await extractText(filePath);
-    const text = normalizeText(rawText || "");
+    const text = cleanTranscriptText(rawText || "");
 
     if (!text) {
       console.warn(`Skipping ${filename}: no text extracted`);
@@ -181,79 +238,109 @@ const main = async () => {
     const transcriptId = randomUUID();
     const wordCount = text.split(/\s+/).filter(Boolean).length;
 
-    statements.push(
-      buildInsert(
-        "transcripts",
-        [
-          "id",
-          "title",
-          "season",
-          "episode",
-          "summary",
-          "content",
-          "source",
-          "word_count",
-          "created_at"
-        ],
-        [
-          transcriptId,
-          title,
-          season,
-          episode,
-          null,
-          text,
-          filename,
-          wordCount,
-          createdAt
-        ]
-      )
-    );
-
-    statements.push(
-      buildInsert(
-        "transcript_metadata",
-        [
-          "transcript_id",
-          "fears_json",
-          "cast_json",
-          "themes_json",
-          "tags_json",
-          "locations_json"
-        ],
-        [
-          transcriptId,
-          JSON.stringify([]),
-          JSON.stringify([]),
-          JSON.stringify([]),
-          JSON.stringify([]),
-          JSON.stringify([])
-        ]
-      )
-    );
-
-    const chunks = chunkTranscript(text);
-    chunks.forEach((chunk, index) => {
+    if (mode === "insert") {
       statements.push(
         buildInsert(
-          "transcript_chunks",
+          "transcripts",
           [
             "id",
-            "transcript_id",
-            "chunk_index",
+            "title",
+            "season",
+            "episode",
+            "summary",
             "content",
-            "keywords_json",
+            "source",
+            "word_count",
             "created_at"
           ],
           [
-            randomUUID(),
             transcriptId,
-            index,
-            chunk,
-            JSON.stringify([]),
+            title,
+            season,
+            episode,
+            null,
+            text,
+            filename,
+            wordCount,
             createdAt
           ]
         )
       );
+
+      statements.push(
+        buildInsert(
+          "transcript_metadata",
+          [
+            "transcript_id",
+            "fears_json",
+            "cast_json",
+            "themes_json",
+            "tags_json",
+            "locations_json"
+          ],
+          [
+            transcriptId,
+            JSON.stringify([]),
+            JSON.stringify([]),
+            JSON.stringify([]),
+            JSON.stringify([]),
+            JSON.stringify([])
+          ]
+        )
+      );
+    } else {
+      statements.push(
+        `UPDATE transcripts SET content = ${sqlValue(
+          text
+        )}, word_count = ${sqlValue(wordCount)} WHERE source = ${sqlValue(
+          filename
+        )};`
+      );
+      statements.push(
+        `DELETE FROM transcript_chunks WHERE transcript_id = (SELECT id FROM transcripts WHERE source = ${sqlValue(
+          filename
+        )});`
+      );
+    }
+
+    const chunks = chunkTranscript(text);
+    const transcriptRef =
+      mode === "insert"
+        ? sqlValue(transcriptId)
+        : `(SELECT id FROM transcripts WHERE source = ${sqlValue(filename)})`;
+
+    chunks.forEach((chunk, index) => {
+      if (mode === "insert") {
+        statements.push(
+          buildInsert(
+            "transcript_chunks",
+            [
+              "id",
+              "transcript_id",
+              "chunk_index",
+              "content",
+              "keywords_json",
+              "created_at"
+            ],
+            [
+              randomUUID(),
+              transcriptId,
+              index,
+              chunk,
+              JSON.stringify([]),
+              createdAt
+            ]
+          )
+        );
+      } else {
+        statements.push(
+          `INSERT INTO transcript_chunks (id, transcript_id, chunk_index, content, keywords_json, created_at) VALUES (${sqlValue(
+            randomUUID()
+          )}, ${transcriptRef}, ${sqlValue(index)}, ${sqlValue(
+            chunk
+          )}, ${sqlValue(JSON.stringify([]))}, ${sqlValue(createdAt)});`
+        );
+      }
     });
 
     metadataLines.push(
@@ -264,17 +351,17 @@ const main = async () => {
         season,
         episode,
         wordCount,
-        chunks: chunks.length
+        chunks: chunks.length,
+        mode
       })
     );
   }
 
   await fs.mkdir(outputDir, { recursive: true });
-  await fs.writeFile(
-    path.join(outputDir, "ingest.sql"),
-    `${statements.join("\n")}\n`,
-    "utf8"
-  );
+  const outputName = mode === "update" ? "rechunk.sql" : "ingest.sql";
+  let sql = statements.join("\n");
+
+  await fs.writeFile(path.join(outputDir, outputName), `${sql}\n`, "utf8");
   await fs.writeFile(
     path.join(outputDir, "metadata.jsonl"),
     `${metadataLines.join("\n")}\n`,
@@ -282,7 +369,7 @@ const main = async () => {
   );
 
   console.log(`Processed ${metadataLines.length} transcripts.`);
-  console.log(`SQL written to ${path.join(outputDir, "ingest.sql")}`);
+  console.log(`SQL written to ${path.join(outputDir, outputName)}`);
   console.log(`Metadata written to ${path.join(outputDir, "metadata.jsonl")}`);
 };
 
