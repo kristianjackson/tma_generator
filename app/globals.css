@@ -1,13 +1,13 @@
 :root {
   color-scheme: light;
-  --ink: #1b1b1d;
-  --muted: #5b5b63;
-  --accent: #ec6b2f;
-  --accent-dark: #c9541f;
-  --bg: #f7f2ec;
+  --ink: #1b2330;
+  --muted: #4e5a6b;
+  --accent: #0f6e7d;
+  --accent-dark: #0b4f5b;
+  --bg: #f1f4f8;
   --card: #ffffff;
-  --line: #e3ddd6;
-  --shadow: 0 20px 45px rgba(27, 27, 29, 0.12);
+  --line: #d5dde8;
+  --shadow: 0 24px 50px rgba(20, 33, 46, 0.14);
 }
 
 * {
@@ -16,7 +16,7 @@
 
 body {
   margin: 0;
-  background: radial-gradient(circle at top, #fff7ef, var(--bg));
+  background: radial-gradient(circle at top left, #f8fbff, var(--bg) 55%, #edf2f7);
   color: var(--ink);
 }
 
@@ -55,12 +55,16 @@ a {
 }
 
 .hero {
-  max-width: 720px;
+  width: min(100%, 760px);
   background: var(--card);
   border: 1px solid var(--line);
   padding: 48px;
   border-radius: 24px;
   box-shadow: var(--shadow);
+}
+
+.hero-wide {
+  width: min(100%, 1100px);
 }
 
 .eyebrow {
@@ -122,7 +126,7 @@ button {
   border: 1px solid var(--line);
   border-radius: 16px;
   padding: 20px;
-  background: #fff9f3;
+  background: #f8fbff;
 }
 
 .card h2 {
@@ -177,7 +181,7 @@ button {
   padding: 10px 14px;
   border-radius: 12px;
   border: 1px solid var(--line);
-  background: #fff4e8;
+  background: #eaf6f7;
   color: var(--muted);
   font-size: 14px;
 }
@@ -218,6 +222,7 @@ button {
 
 .table {
   width: 100%;
+  min-width: 760px;
   border-collapse: collapse;
   font-size: 15px;
 }
@@ -228,6 +233,7 @@ button {
   padding: 12px 10px;
   border-bottom: 1px solid var(--line);
   vertical-align: top;
+  overflow-wrap: anywhere;
 }
 
 .table th {
@@ -239,6 +245,12 @@ button {
 
 .table tr:last-child td {
   border-bottom: none;
+}
+
+.table-card {
+  overflow-x: auto;
+  width: 100%;
+  max-width: 100%;
 }
 
 .avatar {

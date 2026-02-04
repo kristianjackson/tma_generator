@@ -73,6 +73,23 @@ const matchesQuery = (user: ClerkUser, query: string) => {
   return haystack.includes(query.toLowerCase());
 };
 
+const getPrimaryEmail = (user: ClerkUser) =>
+  user.emailAddresses.find(
+    (address) => address.id === user.primaryEmailAddressId
+  )?.emailAddress ??
+  user.emailAddresses[0]?.emailAddress ??
+  "—";
+
+const getDisplayName = (user: ClerkUser) => {
+  const fullName = `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim();
+
+  if (fullName) {
+    return fullName;
+  }
+
+  return user.username ?? getPrimaryEmail(user) ?? "Unknown user";
+};
+
 const fetchAllUsers = async (client: ClerkClient) => {
   const users: ClerkUser[] = [];
   const limit = 100;
@@ -300,6 +317,7 @@ export default async function AdminUsersPage({
   const client = await clerkClient();
   const currentUser = userId ? await client.users.getUser(userId) : null;
   const isAdmin = currentUser ? isUserAdmin(currentUser) : false;
+  const currentUserName = currentUser ? getDisplayName(currentUser) : "Unknown user";
   const resolvedSearchParams = await searchParams;
   const page = getPage(getFirstValue(resolvedSearchParams?.page));
   const query = getFirstValue(resolvedSearchParams?.q)?.trim() ?? "";
@@ -355,7 +373,7 @@ export default async function AdminUsersPage({
 
   return (
     <main className="page">
-      <section className="hero">
+      <section className="hero hero-wide">
         <p className="eyebrow">Admin</p>
         <div className="admin-header">
           <h1>User Directory</h1>
@@ -363,9 +381,7 @@ export default async function AdminUsersPage({
             Admin settings
           </Link>
         </div>
-        <p className="subhead">
-          {rangeLabel} Current user: {userId}
-        </p>
+        <p className="subhead">{rangeLabel} Current user: {currentUserName}</p>
         {noticeMessage ? <p className="notice">{noticeMessage}</p> : null}
         <div className="toolbar">
           <form className="search" action="/admin" method="get">
@@ -403,7 +419,7 @@ export default async function AdminUsersPage({
             Apply to selected
           </button>
         </form>
-        <div className="card">
+        <div className="card table-card">
           <table className="table">
             <thead>
               <tr>
@@ -422,16 +438,8 @@ export default async function AdminUsersPage({
             </thead>
             <tbody>
               {filteredUsers.map((user) => {
-                const primaryEmail =
-                  user.emailAddresses.find(
-                    (address) => address.id === user.primaryEmailAddressId
-                  )?.emailAddress ??
-                  user.emailAddresses[0]?.emailAddress ??
-                  "—";
-                const displayName =
-                  user.firstName || user.lastName
-                    ? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim()
-                    : "—";
+                const primaryEmail = getPrimaryEmail(user);
+                const displayName = getDisplayName(user);
                 const isRowAdmin = isUserAdmin(user);
                 const makeAdmin = isRowAdmin ? "false" : "true";
                 const actionLabel = isRowAdmin ? "Remove admin" : "Make admin";
