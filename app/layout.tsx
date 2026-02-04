@@ -8,6 +8,7 @@ import {
   UserButton
 } from "@clerk/nextjs";
 import { Space_Grotesk } from "next/font/google";
+import Link from "next/link";
 import "./globals.css";
 
 const spaceGrotesk = Space_Grotesk({ subsets: ["latin"] });
@@ -27,7 +28,18 @@ export default function RootLayout({
       <html lang="en">
         <body className={spaceGrotesk.className}>
           <header className="site-header">
-            <div className="brand">TMA Generator</div>
+            <div className="brand">
+              <SignedIn>
+                <Link className="brand-link" href="/dashboard">
+                  TMA Generator
+                </Link>
+              </SignedIn>
+              <SignedOut>
+                <Link className="brand-link" href="/">
+                  TMA Generator
+                </Link>
+              </SignedOut>
+            </div>
             <div className="auth">
               <SignedOut>
                 <SignInButton />

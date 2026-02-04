@@ -36,6 +36,11 @@ a {
   font-weight: 700;
 }
 
+.brand-link {
+  text-decoration: none;
+  color: inherit;
+}
+
 .auth {
   display: flex;
   gap: 12px;
@@ -167,6 +172,50 @@ button {
   font-size: 14px;
 }
 
+.notice {
+  margin: 12px 0 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #fff4e8;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.admin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.bulk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.bulk-label {
+  font-size: 14px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.select {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 10px 16px;
+  font-size: 15px;
+  background: white;
+}
+
+.checkbox {
+  width: 16px;
+  height: 16px;
+}
+
 .table {
   width: 100%;
   border-collapse: collapse;
@@ -221,6 +270,26 @@ button {
   font-weight: 600;
 }
 
+.inline-form {
+  display: inline;
+}
+
+.small-button {
+  padding: 8px 14px;
+  font-size: 14px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
 @media (max-width: 640px) {
   .hero {
     padding: 32px;
@@ -234,6 +303,11 @@ button {
   .auth {
     flex-wrap: wrap;
     justify-content: center;
+  }
+
+  .admin-header {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .link-button,

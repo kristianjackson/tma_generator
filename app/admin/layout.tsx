@@ -1,5 +1,6 @@
-import { auth } from "@clerk/nextjs/server";
+import { auth, clerkClient } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
+import { hasAnyAdmin, isUserAdmin } from "./admin-utils";
 
 export default async function AdminLayout({
   children
@@ -12,13 +13,16 @@ export default async function AdminLayout({
     redirect("/login");
   }
 
-  const adminIds = (process.env.ADMIN_USER_IDS ?? "")
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean);
+  const client = await clerkClient();
+  const currentUser = await client.users.getUser(userId);
+  const isAdmin = isUserAdmin(currentUser);
 
-  if (adminIds.length > 0 && !adminIds.includes(userId)) {
-    redirect("/dashboard");
+  if (!isAdmin) {
+    const anyAdmin = await hasAnyAdmin(client);
+
+    if (anyAdmin) {
+      redirect("/dashboard");
+    }
   }
 
   return children;

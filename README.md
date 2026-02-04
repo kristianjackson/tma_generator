@@ -25,7 +25,6 @@ These are the relevant variables for Clerk + admin access:
 
 - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` (required for production builds)
 - `CLERK_SECRET_KEY` (required for server-side Clerk API calls)
-- `ADMIN_USER_IDS` (optional allowlist, comma-separated)
 
 Local usage:
 - For quick local dev, you can omit keys and use Clerk keyless mode.
@@ -91,9 +90,12 @@ npm run deploy
 
 ## Admin access
 
-To restrict `/admin` to specific users, set `ADMIN_USER_IDS` as a comma-separated
-list of Clerk user IDs (for example, `ADMIN_USER_IDS=user_123,user_456`). If the
-variable is omitted, any signed-in user can access `/admin`.
+Admins are managed via Clerk user `privateMetadata`:
+
+- The admin UI lets existing admins grant or revoke access (including bulk
+  actions and full-directory search).
+- On a fresh app (no admins yet), the first signed-in user can claim admin
+  access from `/admin` (bootstrap flow).
 
 ## Project structure
 
@@ -104,6 +106,7 @@ variable is omitted, any signed-in user can access `/admin`.
 - `app/dashboard/layout.tsx` - guards all `/dashboard` routes
 - `app/admin/page.tsx` - user admin page using `auth()` + `clerkClient()`
 - `app/admin/layout.tsx` - guards all `/admin` routes
+- `app/admin/settings/page.tsx` - admin settings placeholder
 - `app/protected/page.tsx` - server-rendered route using `auth()`
 - `app/protected/layout.tsx` - guards all `/protected` routes
 - `proxy.ts` - Clerk middleware
