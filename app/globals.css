@@ -85,6 +85,19 @@ a {
   width: min(100%, 1100px);
 }
 
+.hero-ingestion {
+  width: min(100%, 1400px);
+  padding: 40px;
+}
+
+.hero-ingestion .card {
+  padding: 24px;
+}
+
+.hero-ingestion .table {
+  min-width: 980px;
+}
+
 .eyebrow {
   margin: 0 0 12px;
   font-size: 13px;

@@ -8,6 +8,9 @@
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
+  "ai": {
+    "binding": "AI"
+  },
   "d1_databases": [
     {
       "binding": "DB",

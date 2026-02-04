@@ -429,7 +429,7 @@ export default async function IngestionPage({
 
   return (
     <main className="page">
-      <section className="hero hero-wide">
+      <section className="hero hero-wide hero-ingestion">
         <p className="eyebrow">Admin</p>
         <div className="admin-header">
           <h1>Transcript ingestion</h1>
