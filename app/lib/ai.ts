@@ -206,6 +206,7 @@ export const generateOutline = async (input: {
   seed: string;
   filters: Record<string, unknown>;
   context: string;
+  notes?: string;
 }) => {
   const prompt = `You are writing a Magnus Archives style episode outline.
 Use the provided transcript excerpts for tone and structure.
@@ -216,6 +217,7 @@ Avoid meta commentary.`;
     .filter(([, value]) => Array.isArray(value) && value.length > 0)
     .map(([key, value]) => `${key}: ${(value as string[]).join(", ")}`)
     .join("\n");
+  const notesBlock = input.notes ? `Notes:\n${input.notes}` : "";
 
   return runAiChat(
     [
@@ -224,7 +226,7 @@ Avoid meta commentary.`;
         role: "user",
         content: `Seed:\n${input.seed}\n\nFilters:\n${
           filterNotes || "none"
-        }\n\nTranscript excerpts:\n${input.context}`
+        }\n\n${notesBlock ? `${notesBlock}\n\n` : ""}Transcript excerpts:\n${input.context}`
       }
     ],
     { max_tokens: 900 }
@@ -236,6 +238,7 @@ export const generateDraft = async (input: {
   outline: string;
   filters: Record<string, unknown>;
   context: string;
+  notes?: string;
 }) => {
   const prompt = `You are writing a Magnus Archives style episode draft.
 Use the outline and transcript excerpts for tone, pacing, and voice.
@@ -246,6 +249,7 @@ Aim for 1500-2500 words in this pass.`;
     .filter(([, value]) => Array.isArray(value) && value.length > 0)
     .map(([key, value]) => `${key}: ${(value as string[]).join(", ")}`)
     .join("\n");
+  const notesBlock = input.notes ? `Notes:\n${input.notes}` : "";
 
   return runAiChat(
     [
@@ -254,7 +258,7 @@ Aim for 1500-2500 words in this pass.`;
         role: "user",
         content: `Seed:\n${input.seed}\n\nFilters:\n${
           filterNotes || "none"
-        }\n\nOutline:\n${input.outline}\n\nTranscript excerpts:\n${input.context}`
+        }\n\n${notesBlock ? `${notesBlock}\n\n` : ""}Outline:\n${input.outline}\n\nTranscript excerpts:\n${input.context}`
       }
     ],
     { max_tokens: 2000 }

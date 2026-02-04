@@ -6,6 +6,7 @@ import { requireDb } from "../../lib/db";
 import { buildTranscriptContext } from "../../lib/retrieval";
 import { generateOutline } from "../../lib/ai";
 import AutoSubmitForm from "../../components/AutoSubmitForm";
+import SubmitButton from "../../components/SubmitButton";
 
 type SearchParams = {
   run?: string | string[];
@@ -19,7 +20,13 @@ type RunRow = {
 };
 
 type VersionRow = {
+  id?: string;
   content: string;
+};
+type VersionHistoryRow = {
+  id: string;
+  content: string;
+  created_at: number;
 };
 
 const getFirstValue = (value?: string | string[]) =>
@@ -34,6 +41,7 @@ const generateOutlineAction = async (formData: FormData) => {
   }
 
   const runId = String(formData.get("runId") ?? "");
+  const notes = String(formData.get("notes") ?? "").trim();
 
   if (!runId) {
     redirect("/generate/step-1");
@@ -49,17 +57,6 @@ const generateOutlineAction = async (formData: FormData) => {
     redirect("/generate/step-1");
   }
 
-  const existingOutline = await db
-    .prepare(
-      "SELECT content FROM story_versions WHERE run_id = ? AND version_type = ? ORDER BY created_at DESC LIMIT 1"
-    )
-    .bind(runId, "outline")
-    .first<VersionRow>();
-
-  if (existingOutline?.content) {
-    redirect(`/generate/step-2?run=${runId}`);
-  }
-
   await db
     .prepare("UPDATE story_runs SET status = ?, updated_at = ? WHERE id = ?")
     .bind("outline_pending", Date.now(), runId)
@@ -71,7 +68,8 @@ const generateOutlineAction = async (formData: FormData) => {
     const outline = await generateOutline({
       seed: run.seed,
       filters,
-      context: context.context
+      context: context.context,
+      notes: notes || undefined
     });
 
     await db
@@ -190,6 +188,14 @@ export default async function GenerateStepTwoPage({
     .first<VersionRow>();
   const outline = outlineRow?.content ?? "";
   const shouldAutoGenerate = !outline && !notice;
+  const hasOutline = Boolean(outline);
+
+  const outlineVersions = await db
+    .prepare(
+      "SELECT id, content, created_at FROM story_versions WHERE run_id = ? AND version_type = ? ORDER BY created_at DESC"
+    )
+    .bind(runId, "outline")
+    .all<VersionHistoryRow>();
 
   return (
     <main className="page">
@@ -215,16 +221,36 @@ export default async function GenerateStepTwoPage({
           <p className="notice">AI outline generation failed. Try again.</p>
         ) : null}
         {shouldAutoGenerate ? (
-          <div className="notice">
+          <div className="notice notice-loading">
+            <span className="spinner" aria-hidden="true" />
             Generating outline now. This can take a minute.
           </div>
         ) : null}
-        <div className="actions">
-          <form action={generateOutlineAction}>
+        <div className="card">
+          <h2>{hasOutline ? "Regenerate outline" : "Generate outline"}</h2>
+          <p className="subhead">
+            Add optional notes to steer the outline. Regenerating preserves the
+            previous outline as a revision.
+          </p>
+          <form className="form" action={generateOutlineAction}>
             <input type="hidden" name="runId" value={runId} />
-            <button className="ghost" type="submit">
-              Generate outline
-            </button>
+            <label className="form-label" htmlFor="notes">
+              Notes for the outline
+            </label>
+            <textarea
+              id="notes"
+              name="notes"
+              className="textarea"
+              rows={3}
+              placeholder="Emphasize analog horror and limited narration..."
+            />
+            <div className="actions">
+              <SubmitButton
+                className="ghost"
+                idleText={hasOutline ? "Regenerate outline" : "Generate outline"}
+                pendingText="Generating..."
+              />
+            </div>
           </form>
           <AutoSubmitForm action={generateOutlineAction} enabled={shouldAutoGenerate}>
             <input type="hidden" name="runId" value={runId} />
@@ -252,6 +278,22 @@ export default async function GenerateStepTwoPage({
             </Link>
           </div>
         </form>
+
+        <div className="card">
+          <h2>Outline revisions</h2>
+          {outlineVersions.results.length === 0 ? (
+            <p className="subhead">No outline revisions yet.</p>
+          ) : (
+            outlineVersions.results.map((version) => (
+              <details key={version.id} className="revision">
+                <summary>
+                  {new Date(version.created_at).toLocaleString("en-US")}
+                </summary>
+                <pre className="code-block">{version.content}</pre>
+              </details>
+            ))
+          )}
+        </div>
       </section>
     </main>
   );

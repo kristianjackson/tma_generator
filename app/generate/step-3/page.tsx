@@ -6,6 +6,7 @@ import { requireDb } from "../../lib/db";
 import { buildTranscriptContext } from "../../lib/retrieval";
 import { generateDraft } from "../../lib/ai";
 import AutoSubmitForm from "../../components/AutoSubmitForm";
+import SubmitButton from "../../components/SubmitButton";
 
 type SearchParams = {
   run?: string | string[];
@@ -18,7 +19,13 @@ type RunRow = {
 };
 
 type VersionRow = {
+  id?: string;
   content: string;
+};
+type VersionHistoryRow = {
+  id: string;
+  content: string;
+  created_at: number;
 };
 
 const getFirstValue = (value?: string | string[]) =>
@@ -33,6 +40,7 @@ const generateDraftAction = async (formData: FormData) => {
   }
 
   const runId = String(formData.get("runId") ?? "");
+  const notes = String(formData.get("notes") ?? "").trim();
 
   if (!runId) {
     redirect("/generate/step-1");
@@ -46,17 +54,6 @@ const generateDraftAction = async (formData: FormData) => {
 
   if (!run) {
     redirect("/generate/step-1");
-  }
-
-  const existingDraft = await db
-    .prepare(
-      "SELECT content FROM story_versions WHERE run_id = ? AND version_type = ? ORDER BY created_at DESC LIMIT 1"
-    )
-    .bind(runId, "draft")
-    .first<VersionRow>();
-
-  if (existingDraft?.content) {
-    redirect(`/generate/step-3?run=${runId}`);
   }
 
   await db
@@ -88,7 +85,8 @@ const generateDraftAction = async (formData: FormData) => {
       seed: run.seed,
       outline,
       filters,
-      context: context.context
+      context: context.context,
+      notes: notes || undefined
     });
 
     await db
@@ -207,6 +205,14 @@ export default async function GenerateStepThreePage({
     .first<VersionRow>();
   const draft = draftRow?.content ?? "";
   const shouldAutoGenerate = !draft && !notice;
+  const hasDraft = Boolean(draft);
+
+  const draftVersions = await db
+    .prepare(
+      "SELECT id, content, created_at FROM story_versions WHERE run_id = ? AND version_type = ? ORDER BY created_at DESC"
+    )
+    .bind(runId, "draft")
+    .all<VersionHistoryRow>();
 
   return (
     <main className="page">
@@ -229,16 +235,36 @@ export default async function GenerateStepThreePage({
           <p className="notice">AI draft generation failed. Try again.</p>
         ) : null}
         {shouldAutoGenerate ? (
-          <div className="notice">
+          <div className="notice notice-loading">
+            <span className="spinner" aria-hidden="true" />
             Generating draft now. This can take a minute.
           </div>
         ) : null}
-        <div className="actions">
-          <form action={generateDraftAction}>
+        <div className="card">
+          <h2>{hasDraft ? "Regenerate draft" : "Generate draft"}</h2>
+          <p className="subhead">
+            Add optional notes to steer the draft. Regenerating preserves the
+            previous draft as a revision.
+          </p>
+          <form className="form" action={generateDraftAction}>
             <input type="hidden" name="runId" value={runId} />
-            <button className="ghost" type="submit">
-              Generate draft
-            </button>
+            <label className="form-label" htmlFor="notes">
+              Notes for the draft
+            </label>
+            <textarea
+              id="notes"
+              name="notes"
+              className="textarea"
+              rows={3}
+              placeholder="Lean into the statement voice and add a cold open..."
+            />
+            <div className="actions">
+              <SubmitButton
+                className="ghost"
+                idleText={hasDraft ? "Regenerate draft" : "Generate draft"}
+                pendingText="Generating..."
+              />
+            </div>
           </form>
           <AutoSubmitForm action={generateDraftAction} enabled={shouldAutoGenerate}>
             <input type="hidden" name="runId" value={runId} />
@@ -266,6 +292,22 @@ export default async function GenerateStepThreePage({
             </Link>
           </div>
         </form>
+
+        <div className="card">
+          <h2>Draft revisions</h2>
+          {draftVersions.results.length === 0 ? (
+            <p className="subhead">No draft revisions yet.</p>
+          ) : (
+            draftVersions.results.map((version) => (
+              <details key={version.id} className="revision">
+                <summary>
+                  {new Date(version.created_at).toLocaleString("en-US")}
+                </summary>
+                <pre className="code-block">{version.content}</pre>
+              </details>
+            ))
+          )}
+        </div>
       </section>
     </main>
   );

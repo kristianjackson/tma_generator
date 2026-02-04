@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireDb } from "../../lib/db";
 import { suggestMetadata } from "../../lib/ai";
+import SelectAllCheckbox from "../../components/SelectAllCheckbox";
 
 type SearchParams = {
   notice?: string | string[];
@@ -615,7 +616,7 @@ export default async function IngestionPage({
         </div>
 
         <form className="form" action={bulkUpdateMetadataAction}>
-          <div className="card table-card">
+          <div className="card table-card" data-select-group="ingested">
           <h2>Ingested transcripts</h2>
           {transcripts.length === 0 ? (
             <p className="subhead">No transcripts ingested yet.</p>
@@ -623,7 +624,9 @@ export default async function IngestionPage({
             <table className="table">
               <thead>
                 <tr>
-                  <th>Select</th>
+                  <th>
+                    <SelectAllCheckbox group="ingested" label="All" />
+                  </th>
                   <th>Title</th>
                   <th>Actions</th>
                   <th>Season</th>

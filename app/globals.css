@@ -259,6 +259,63 @@ button {
   font-size: 14px;
 }
 
+.notice-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: #eef2ff;
+  border-color: #c7d2fe;
+  color: #1e1b4b;
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid rgba(30, 27, 75, 0.2);
+  border-top-color: rgba(30, 27, 75, 0.8);
+  animation: spin 0.9s linear infinite;
+}
+
+.button-spinner {
+  margin-right: 8px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.revision {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-top: 12px;
+  background: #ffffff;
+}
+
+.revision summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--ink);
+  list-style: none;
+}
+
+.revision summary::-webkit-details-marker {
+  display: none;
+}
+
+.revision summary::after {
+  content: "▾";
+  float: right;
+  color: var(--muted);
+}
+
+.revision[open] summary::after {
+  content: "▴";
+}
+
 .admin-header {
   display: flex;
   align-items: center;
@@ -324,6 +381,17 @@ button {
   gap: 8px;
   font-size: 14px;
   margin-bottom: 6px;
+}
+
+.checkbox-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .checkbox {

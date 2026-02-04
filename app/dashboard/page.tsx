@@ -11,7 +11,10 @@ export default function DashboardPage() {
           <h2>Planned Modules</h2>
           <ul>
             <li>New TMA Generation</li>
-            <li>Saved runs and exports</li>
+            <li>Phase 3: Generation pipeline polish (auto + regenerate)</li>
+            <li>Phase 3: Revision history + restore controls</li>
+            <li>Phase 3: Export / share tools (txt/markdown, copy)</li>
+            <li>Phase 3: Usage limits + cost guardrails</li>
             <li>Team management</li>
           </ul>
         </div>
