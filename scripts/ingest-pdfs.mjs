@@ -347,11 +347,6 @@ const main = async () => {
     }
 
     const chunks = chunkTranscript(text);
-    const transcriptRef =
-      mode === "insert"
-        ? sqlValue(transcriptId)
-        : `(SELECT id FROM transcripts WHERE source = ${sqlValue(filename)})`;
-
     chunks.forEach((chunk, index) => {
       if (mode === "insert") {
         statements.push(
@@ -377,11 +372,12 @@ const main = async () => {
         );
       } else {
         statements.push(
-          `INSERT INTO transcript_chunks (id, transcript_id, chunk_index, content, keywords_json, created_at) VALUES (${sqlValue(
-            randomUUID()
-          )}, ${transcriptRef}, ${sqlValue(index)}, ${sqlValue(
+          `INSERT INTO transcript_chunks (id, transcript_id, chunk_index, content, keywords_json, created_at)
+           SELECT ${sqlValue(randomUUID())}, id, ${sqlValue(index)}, ${sqlValue(
             chunk
-          )}, ${sqlValue(JSON.stringify([]))}, ${sqlValue(createdAt)});`
+          )}, ${sqlValue(JSON.stringify([]))}, ${sqlValue(
+            createdAt
+          )} FROM transcripts WHERE source = ${sqlValue(filename)};`
         );
       }
     });
