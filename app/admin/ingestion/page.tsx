@@ -180,6 +180,11 @@ export default async function IngestionPage({
           Load transcripts, tag metadata (fears, cast, themes), and prepare
           chunks for retrieval.
         </p>
+        <p className="hint">
+          For batch PDF ingestion, run the local script in
+          <code>scripts/ingest-pdfs.mjs</code> to populate D1, then return here to
+          review metadata.
+        </p>
         {notice === "missing" ? (
           <p className="notice">Title and content are required.</p>
         ) : null}

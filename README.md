@@ -35,6 +35,33 @@ The generator uses Cloudflare D1 for transcripts, metadata, runs, and versions.
 
 If `DB` is not configured, ingestion and generation screens will show a warning.
 
+### Batch PDF ingestion (local)
+
+The 200 transcripts can be ingested from local PDFs and loaded into D1 in bulk.
+
+1. Place the PDFs in `data/transcript_pdfs/` (ignored by git).
+2. Run the ingest script:
+
+```
+bun run ingest:pdfs
+```
+
+This creates:
+- `data/ingest/ingest.sql` (SQL insert statements)
+- `data/ingest/metadata.jsonl` (per-file metadata summary)
+
+3. Load into D1 (replace `<DB_NAME>` with your Cloudflare D1 database name):
+
+```
+wrangler d1 execute <DB_NAME> --file data/ingest/ingest.sql
+```
+
+Notes:
+- The script parses filenames like `MAG 011 - Dreamer - Transcript Re-formatted Template -converted.pdf`
+  to infer episode number, season, and title.
+- Fears, cast, themes, tags, and locations are inserted as empty lists and can be edited in
+  **Admin → Transcript ingestion** after import.
+
 
 Local usage:
 - For quick local dev, you can omit keys and use Clerk keyless mode.

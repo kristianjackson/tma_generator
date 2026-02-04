@@ -10,7 +10,8 @@
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
-    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
+    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
+    "ingest:pdfs": "bun scripts/ingest-pdfs.mjs"
   },
   "dependencies": {
     "@clerk/nextjs": "6.37.1",
@@ -23,6 +24,7 @@
     "@types/react": "19.2.10",
     "@types/react-dom": "^19.2.0",
     "@opennextjs/cloudflare": "1.8.0",
+    "pdf-parse": "^1.1.1",
     "typescript": "5.9.3",
     "wrangler": "4.62.0"
   },

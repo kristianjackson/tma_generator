@@ -8,3 +8,5 @@ node_modules/
 .dev.vars
 cloudflare-env.d.ts
 *.log
+data/transcript_pdfs/
+data/ingest/
