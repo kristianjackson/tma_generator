@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { requireDb } from "../../lib/db";
 import { buildTranscriptContext } from "../../lib/retrieval";
 import { generateDraft } from "../../lib/ai";
+import AutoSubmitForm from "../../components/AutoSubmitForm";
 
 type SearchParams = {
   run?: string | string[];
@@ -47,6 +48,22 @@ const generateDraftAction = async (formData: FormData) => {
     redirect("/generate/step-1");
   }
 
+  const existingDraft = await db
+    .prepare(
+      "SELECT content FROM story_versions WHERE run_id = ? AND version_type = ? ORDER BY created_at DESC LIMIT 1"
+    )
+    .bind(runId, "draft")
+    .first<VersionRow>();
+
+  if (existingDraft?.content) {
+    redirect(`/generate/step-3?run=${runId}`);
+  }
+
+  await db
+    .prepare("UPDATE story_runs SET status = ?, updated_at = ? WHERE id = ?")
+    .bind("draft_pending", Date.now(), runId)
+    .run();
+
   const outlineRow = await db
     .prepare(
       "SELECT content FROM story_versions WHERE run_id = ? AND version_type = ? ORDER BY created_at DESC LIMIT 1"
@@ -54,6 +71,9 @@ const generateDraftAction = async (formData: FormData) => {
     .bind(runId, "outline")
     .first<VersionRow>();
   const outline = outlineRow?.content ?? "";
+  if (!outline) {
+    redirect(`/generate/step-2?run=${runId}&notice=outline-missing`);
+  }
   try {
     const filtersRow = await db
       .prepare("SELECT filters_json FROM story_runs WHERE id = ?")
@@ -186,6 +206,7 @@ export default async function GenerateStepThreePage({
     .bind(runId, "draft")
     .first<VersionRow>();
   const draft = draftRow?.content ?? "";
+  const shouldAutoGenerate = !draft && !notice;
 
   return (
     <main className="page">
@@ -207,6 +228,11 @@ export default async function GenerateStepThreePage({
         {notice === "ai-failed" ? (
           <p className="notice">AI draft generation failed. Try again.</p>
         ) : null}
+        {shouldAutoGenerate ? (
+          <div className="notice">
+            Generating draft now. This can take a minute.
+          </div>
+        ) : null}
         <div className="actions">
           <form action={generateDraftAction}>
             <input type="hidden" name="runId" value={runId} />
@@ -214,6 +240,9 @@ export default async function GenerateStepThreePage({
               Generate draft
             </button>
           </form>
+          <AutoSubmitForm action={generateDraftAction} enabled={shouldAutoGenerate}>
+            <input type="hidden" name="runId" value={runId} />
+          </AutoSubmitForm>
         </div>
         <form className="form" action={saveDraftAction}>
           <input type="hidden" name="runId" value={runId} />

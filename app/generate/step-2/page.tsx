@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { requireDb } from "../../lib/db";
 import { buildTranscriptContext } from "../../lib/retrieval";
 import { generateOutline } from "../../lib/ai";
+import AutoSubmitForm from "../../components/AutoSubmitForm";
 
 type SearchParams = {
   run?: string | string[];
@@ -47,6 +48,22 @@ const generateOutlineAction = async (formData: FormData) => {
   if (!run) {
     redirect("/generate/step-1");
   }
+
+  const existingOutline = await db
+    .prepare(
+      "SELECT content FROM story_versions WHERE run_id = ? AND version_type = ? ORDER BY created_at DESC LIMIT 1"
+    )
+    .bind(runId, "outline")
+    .first<VersionRow>();
+
+  if (existingOutline?.content) {
+    redirect(`/generate/step-2?run=${runId}`);
+  }
+
+  await db
+    .prepare("UPDATE story_runs SET status = ?, updated_at = ? WHERE id = ?")
+    .bind("outline_pending", Date.now(), runId)
+    .run();
 
   const filters = run.filters_json ? JSON.parse(run.filters_json) : {};
   try {
@@ -172,6 +189,7 @@ export default async function GenerateStepTwoPage({
     .bind(runId, "outline")
     .first<VersionRow>();
   const outline = outlineRow?.content ?? "";
+  const shouldAutoGenerate = !outline && !notice;
 
   return (
     <main className="page">
@@ -190,8 +208,16 @@ export default async function GenerateStepTwoPage({
             <code>AI</code> to generate outlines.
           </p>
         ) : null}
+        {notice === "outline-missing" ? (
+          <p className="notice">Generate an outline before drafting.</p>
+        ) : null}
         {notice === "ai-failed" ? (
           <p className="notice">AI outline generation failed. Try again.</p>
+        ) : null}
+        {shouldAutoGenerate ? (
+          <div className="notice">
+            Generating outline now. This can take a minute.
+          </div>
         ) : null}
         <div className="actions">
           <form action={generateOutlineAction}>
@@ -200,6 +226,9 @@ export default async function GenerateStepTwoPage({
               Generate outline
             </button>
           </form>
+          <AutoSubmitForm action={generateOutlineAction} enabled={shouldAutoGenerate}>
+            <input type="hidden" name="runId" value={runId} />
+          </AutoSubmitForm>
         </div>
         <form className="form" action={saveOutlineAction}>
           <input type="hidden" name="runId" value={runId} />
