@@ -140,6 +140,8 @@ npm run deploy
 - Preview command (optional): `npx @opennextjs/cloudflare upload`
 - Secrets in Build configuration and Settings > Variables & Secrets
 - Worker name matches `wrangler.jsonc`
+- Optional: set `NEXT_TELEMETRY_DISABLED=1` in Build configuration to silence Next.js telemetry logs
+- Optional: commit `bun.lockb` (run `bun install` locally) to enable build caching
 
 ## Troubleshooting
 

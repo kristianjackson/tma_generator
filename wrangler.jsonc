@@ -9,7 +9,8 @@
     "binding": "ASSETS"
   },
   "ai": {
-    "binding": "AI"
+    "binding": "AI",
+    "remote": true
   },
   "d1_databases": [
     {
