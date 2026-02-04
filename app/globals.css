@@ -391,6 +391,11 @@ button {
   color: var(--muted);
 }
 
+.meta-stack span {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .meta-stack strong {
   color: var(--text);
   font-weight: 600;
