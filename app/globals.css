@@ -102,7 +102,11 @@ a {
 }
 
 .hero-ingestion .table {
-  min-width: 1300px;
+  min-width: 1500px;
+}
+
+.hero-ingestion .table th {
+  white-space: nowrap;
 }
 
 .hero-ingestion .form {
