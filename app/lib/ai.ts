@@ -8,8 +8,8 @@ type AiSuggestion = {
   summary?: string;
   fears?: string[];
   cast?: string[];
+  motifs?: string[];
   themes?: string[];
-  tags?: string[];
   locations?: string[];
 };
 
@@ -74,6 +74,70 @@ const extractJson = (text: string): AiSuggestion | null => {
   }
 };
 
+const FEAR_CANONICAL = [
+  "The Beholding",
+  "The Buried",
+  "The Corruption",
+  "The Dark",
+  "The Desolation",
+  "The End",
+  "The Extinction",
+  "The Flesh",
+  "The Hunt",
+  "The Lonely",
+  "The Slaughter",
+  "The Spiral",
+  "The Stranger",
+  "The Vast",
+  "The Web"
+];
+
+const FEAR_LOOKUP = new Map(
+  FEAR_CANONICAL.flatMap((fear) => {
+    const normalized = fear.toLowerCase().replace(/^the\s+/, "");
+    return [
+      [fear.toLowerCase(), fear],
+      [normalized, fear]
+    ];
+  })
+);
+
+const normalizeFears = (values?: string[]) => {
+  if (!values) {
+    return [] as string[];
+  }
+
+  const result = new Set<string>();
+
+  values.forEach((value) => {
+    const normalized = value
+      .toLowerCase()
+      .replace(/^the\s+/, "")
+      .replace(/[^a-z]+/g, " ")
+      .trim();
+    const canonical = FEAR_LOOKUP.get(normalized);
+    if (canonical) {
+      result.add(canonical);
+    }
+  });
+
+  return Array.from(result);
+};
+
+const cleanSummary = (summary?: string) => {
+  if (!summary) {
+    return "";
+  }
+
+  return summary
+    .replace(
+      /^(A|An)\s+(researcher|archivist).*?investigates\s+/i,
+      ""
+    )
+    .replace(/^The Magnus Institute investigates\s+/i, "")
+    .trim();
+};
+
 const truncateTranscript = (content: string, maxChars = 12000) => {
   if (content.length <= maxChars) {
     return content;
@@ -92,10 +156,11 @@ export const suggestMetadata = async (title: string, content: string) => {
 
   const model = getAiModel();
   const prompt = `You are tagging The Magnus Archives transcripts.
-Return JSON with keys: summary, fears, cast, themes, tags, locations.
-- summary: 1-2 sentences.
-- fears/themes/tags: short phrases, 3-10 items.
-- cast/locations: proper names only if referenced.
+Return JSON with keys: summary, fears, cast, motifs, locations.
+- summary: 1-2 sentences, do NOT start with "A researcher at the Magnus Institute investigates..."
+- fears: ONLY use the canonical 14 fears: ${FEAR_CANONICAL.join(", ")}.
+- cast/locations: proper names only if explicitly referenced.
+- motifs: optional; return [] if not confident.
 Return JSON only.`;
 
   const input = truncateTranscript(content);
@@ -116,5 +181,13 @@ Return JSON only.`;
     throw new Error("AI response could not be parsed.");
   }
 
-  return parsed;
+  const motifs = parsed.motifs ?? parsed.themes ?? [];
+
+  return {
+    summary: cleanSummary(parsed.summary),
+    fears: normalizeFears(parsed.fears),
+    cast: parsed.cast,
+    motifs,
+    locations: parsed.locations
+  };
 };

@@ -72,7 +72,7 @@ wrangler d1 execute <DB_NAME> --file data/ingest/ingest.sql
 Notes:
 - The script parses filenames like `MAG 011 - Dreamer - Transcript Re-formatted Template -converted.pdf`
   to infer episode number, season, and title.
-- Fears, cast, themes, tags, and locations are inserted as empty lists and can be edited in
+- Fears, cast, motifs, and locations are inserted as empty lists and can be edited in
   **Admin → Transcript ingestion** after import.
 
 ### Cleaning + rechunking existing data
@@ -187,7 +187,7 @@ configure a Workers AI binding named `AI` and (optionally) set `AI_MODEL` to the
 model ID you want to use. If `AI` is not configured, the UI will show a warning.
 
 You can also run AI tagging in batches from **Admin → Transcript ingestion**.
-Select transcripts, set a small batch size (5-10), and run **Generate AI tags**.
+Select transcripts, set a small batch size (5-10), and run **Generate AI metadata**.
 
 ## Project structure
 

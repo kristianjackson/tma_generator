@@ -44,7 +44,7 @@ a {
 
 .site-nav {
   display: flex;
-  gap: 16px;
+  gap: 10px;
   align-items: center;
   flex-wrap: wrap;
 }
@@ -53,10 +53,16 @@ a {
   text-decoration: none;
   color: var(--muted);
   font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #f3f6fb;
 }
 
 .site-nav a:hover {
   color: var(--ink);
+  background: white;
+  border-color: #cbd5f5;
 }
 
 .auth {
@@ -86,16 +92,20 @@ a {
 }
 
 .hero-ingestion {
-  width: min(100%, 1400px);
-  padding: 40px;
+  width: min(100%, 1600px);
+  padding: 48px;
 }
 
 .hero-ingestion .card {
-  padding: 24px;
+  padding: 28px;
 }
 
 .hero-ingestion .table {
-  min-width: 980px;
+  min-width: 1100px;
+}
+
+.hero-ingestion .form {
+  gap: 16px;
 }
 
 .eyebrow {

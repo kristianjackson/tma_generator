@@ -79,8 +79,8 @@ const updateMetadataAction = async (formData: FormData) => {
   const source = String(formData.get("source") ?? "").trim();
   const fears = parseList(String(formData.get("fears") ?? ""));
   const cast = parseList(String(formData.get("cast") ?? ""));
-  const themes = parseList(String(formData.get("themes") ?? ""));
-  const tags = parseList(String(formData.get("tags") ?? ""));
+  const motifs = parseList(String(formData.get("motifs") ?? ""));
+  const existingTags = String(formData.get("tags_json") ?? "[]");
   const locations = parseList(String(formData.get("locations") ?? ""));
 
   if (!transcriptId) {
@@ -122,8 +122,8 @@ const updateMetadataAction = async (formData: FormData) => {
       transcriptId,
       JSON.stringify(fears),
       JSON.stringify(cast),
-      JSON.stringify(themes),
-      JSON.stringify(tags),
+      JSON.stringify(motifs),
+      existingTags,
       JSON.stringify(locations)
     )
     .run();
@@ -166,8 +166,9 @@ const suggestMetadataAction = async (formData: FormData) => {
 
     const fears = normalizeList(suggestion.fears);
     const cast = normalizeList(suggestion.cast);
-    const themes = normalizeList(suggestion.themes);
-    const tags = normalizeList(suggestion.tags);
+    const motifs = normalizeList(
+      (suggestion as { motifs?: string[] }).motifs ?? suggestion.themes
+    );
     const locations = normalizeList(suggestion.locations);
     const summary = String(suggestion.summary ?? "").trim();
 
@@ -178,26 +179,31 @@ const suggestMetadataAction = async (formData: FormData) => {
         .run();
     }
 
-    await db
-      .prepare(
-        `INSERT INTO transcript_metadata (transcript_id, fears_json, cast_json, themes_json, tags_json, locations_json)
-         VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT(transcript_id) DO UPDATE SET
-           fears_json = excluded.fears_json,
-           cast_json = excluded.cast_json,
-           themes_json = excluded.themes_json,
-           tags_json = excluded.tags_json,
-           locations_json = excluded.locations_json`
-      )
-      .bind(
-        transcript.id,
-        JSON.stringify(fears),
-        JSON.stringify(cast),
-        JSON.stringify(themes),
-        JSON.stringify(tags),
-        JSON.stringify(locations)
-      )
-      .run();
+      const existing = await db
+        .prepare("SELECT tags_json FROM transcript_metadata WHERE transcript_id = ?")
+        .bind(transcript.id)
+        .first<{ tags_json?: string | null }>();
+
+      await db
+        .prepare(
+          `INSERT INTO transcript_metadata (transcript_id, fears_json, cast_json, themes_json, tags_json, locations_json)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(transcript_id) DO UPDATE SET
+             fears_json = excluded.fears_json,
+             cast_json = excluded.cast_json,
+             themes_json = excluded.themes_json,
+             tags_json = excluded.tags_json,
+             locations_json = excluded.locations_json`
+        )
+        .bind(
+          transcript.id,
+          JSON.stringify(fears),
+          JSON.stringify(cast),
+          JSON.stringify(motifs),
+          existing?.tags_json ?? JSON.stringify([]),
+          JSON.stringify(locations)
+        )
+        .run();
 
     revalidatePath("/admin/ingestion");
     revalidatePath(`/admin/ingestion/${transcript.id}`);
@@ -242,8 +248,7 @@ export default async function IngestionDetailPage({
 
   const fears = parseJsonList(transcript.fears_json);
   const cast = parseJsonList(transcript.cast_json);
-  const themes = parseJsonList(transcript.themes_json);
-  const tags = parseJsonList(transcript.tags_json);
+  const motifs = parseJsonList(transcript.themes_json);
   const locations = parseJsonList(transcript.locations_json);
 
   return (
@@ -302,6 +307,7 @@ export default async function IngestionDetailPage({
 
         <form className="form" action={updateMetadataAction}>
           <input type="hidden" name="id" value={transcript.id} />
+          <input type="hidden" name="tags_json" value={transcript.tags_json ?? "[]"} />
 
           <label className="form-label" htmlFor="title">
             Title
@@ -380,24 +386,14 @@ export default async function IngestionDetailPage({
             defaultValue={cast.join(", ")}
           />
 
-          <label className="form-label" htmlFor="themes">
-            Themes (comma-separated)
+          <label className="form-label" htmlFor="motifs">
+            Motifs (comma-separated)
           </label>
           <input
-            id="themes"
-            name="themes"
+            id="motifs"
+            name="motifs"
             className="input"
-            defaultValue={themes.join(", ")}
-          />
-
-          <label className="form-label" htmlFor="tags">
-            Tags (comma-separated)
-          </label>
-          <input
-            id="tags"
-            name="tags"
-            className="input"
-            defaultValue={tags.join(", ")}
+            defaultValue={motifs.join(", ")}
           />
 
           <label className="form-label" htmlFor="locations">

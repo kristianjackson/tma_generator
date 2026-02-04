@@ -72,6 +72,7 @@ const normalizeText = (text) =>
   text
     .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n")
+    .replace(/\f/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 
@@ -95,6 +96,48 @@ const isNoiseLine = (line) => {
   }
 
   if (/^The Magnus Archives$/i.test(trimmed)) {
+    return true;
+  }
+
+  if (
+    /^The Magnus Archives\s*[-–—]\s*MAG\s*\d{1,3}\s*[-–—].*/i.test(trimmed)
+  ) {
+    return true;
+  }
+
+  if (/^The Magnus Archives Theme/i.test(trimmed)) {
+    return true;
+  }
+
+  if (/rustyquill\.com/i.test(trimmed)) {
+    return true;
+  }
+
+  if (/Rusty Quill/i.test(trimmed)) {
+    return true;
+  }
+
+  if (/therustyquill/i.test(trimmed)) {
+    return true;
+  }
+
+  if (/rustyquilluk/i.test(trimmed)) {
+    return true;
+  }
+
+  if (/creative commons/i.test(trimmed)) {
+    return true;
+  }
+
+  if (/patreon/i.test(trimmed)) {
+    return true;
+  }
+
+  if (/Thanks for listening/i.test(trimmed)) {
+    return true;
+  }
+
+  if (/licensed under/i.test(trimmed)) {
     return true;
   }
 

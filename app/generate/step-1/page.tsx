@@ -25,8 +25,7 @@ const createRunAction = async (formData: FormData) => {
   const length = String(formData.get("length") ?? "episode").trim();
   const fears = formData.getAll("fears").map(String);
   const cast = formData.getAll("cast").map(String);
-  const themes = formData.getAll("themes").map(String);
-  const tags = formData.getAll("tags").map(String);
+  const motifs = formData.getAll("motifs").map(String);
   const locations = formData.getAll("locations").map(String);
 
   if (!seed) {
@@ -45,7 +44,7 @@ const createRunAction = async (formData: FormData) => {
       runId,
       userId,
       seed,
-      JSON.stringify({ length, fears, cast, themes, tags, locations }),
+      JSON.stringify({ length, fears, cast, motifs, locations }),
       "seeded",
       now,
       now
@@ -74,8 +73,7 @@ export default async function GenerateStepOnePage({
     filters = {
       fears: [],
       cast: [],
-      themes: [],
-      tags: [],
+      motifs: [],
       locations: []
     };
   }
@@ -151,27 +149,14 @@ export default async function GenerateStepOnePage({
               )}
             </div>
             <div className="filter-card">
-              <h3>Themes</h3>
-              {filters.themes.length === 0 ? (
-                <p className="subhead">No themes ingested yet.</p>
+              <h3>Motifs</h3>
+              {filters.motifs.length === 0 ? (
+                <p className="subhead">No motifs ingested yet.</p>
               ) : (
-                filters.themes.map((theme) => (
-                  <label key={theme} className="checkbox-row">
-                    <input type="checkbox" name="themes" value={theme} />
-                    {theme}
-                  </label>
-                ))
-              )}
-            </div>
-            <div className="filter-card">
-              <h3>Tags</h3>
-              {filters.tags.length === 0 ? (
-                <p className="subhead">No tags ingested yet.</p>
-              ) : (
-                filters.tags.map((tag) => (
-                  <label key={tag} className="checkbox-row">
-                    <input type="checkbox" name="tags" value={tag} />
-                    {tag}
+                filters.motifs.map((motif) => (
+                  <label key={motif} className="checkbox-row">
+                    <input type="checkbox" name="motifs" value={motif} />
+                    {motif}
                   </label>
                 ))
               )}

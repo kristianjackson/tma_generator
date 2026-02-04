@@ -8,6 +8,7 @@ import { suggestMetadata } from "../../lib/ai";
 type SearchParams = {
   notice?: string | string[];
   q?: string | string[];
+  page?: string | string[];
 };
 
 type TranscriptRow = {
@@ -20,7 +21,6 @@ type TranscriptRow = {
   fears_json?: string | null;
   cast_json?: string | null;
   themes_json?: string | null;
-  tags_json?: string | null;
   locations_json?: string | null;
 };
 
@@ -128,8 +128,7 @@ const bulkUpdateMetadataAction = async (formData: FormData) => {
   const selectedIds = formData.getAll("selectedIds").map(String).filter(Boolean);
   const fears = parseList(String(formData.get("bulk_fears") ?? ""));
   const cast = parseList(String(formData.get("bulk_cast") ?? ""));
-  const themes = parseList(String(formData.get("bulk_themes") ?? ""));
-  const tags = parseList(String(formData.get("bulk_tags") ?? ""));
+  const motifs = parseList(String(formData.get("bulk_motifs") ?? ""));
   const locations = parseList(String(formData.get("bulk_locations") ?? ""));
   const mode =
     String(formData.get("bulk_mode") ?? "append") === "replace"
@@ -163,15 +162,9 @@ const bulkUpdateMetadataAction = async (formData: FormData) => {
       mode,
       allowEmpty
     );
-    const nextThemes = mergeList(
+    const nextMotifs = mergeList(
       parseJsonList(existing?.themes_json),
-      themes,
-      mode,
-      allowEmpty
-    );
-    const nextTags = mergeList(
-      parseJsonList(existing?.tags_json),
-      tags,
+      motifs,
       mode,
       allowEmpty
     );
@@ -197,8 +190,8 @@ const bulkUpdateMetadataAction = async (formData: FormData) => {
         id,
         JSON.stringify(nextFears),
         JSON.stringify(nextCast),
-        JSON.stringify(nextThemes),
-        JSON.stringify(nextTags),
+        JSON.stringify(nextMotifs),
+        existing?.tags_json ?? JSON.stringify([]),
         JSON.stringify(nextLocations)
       )
       .run();
@@ -246,8 +239,9 @@ const batchAiSuggestAction = async (formData: FormData) => {
 
       const fears = normalizeList(suggestion.fears);
       const cast = normalizeList(suggestion.cast);
-      const themes = normalizeList(suggestion.themes);
-      const tags = normalizeList(suggestion.tags);
+      const motifs = normalizeList(
+        (suggestion as { motifs?: string[] }).motifs ?? suggestion.themes
+      );
       const locations = normalizeList(suggestion.locations);
       const summary = String(suggestion.summary ?? "").trim();
 
@@ -257,6 +251,11 @@ const batchAiSuggestAction = async (formData: FormData) => {
           .bind(summary, transcript.id)
           .run();
       }
+
+      const existing = await db
+        .prepare("SELECT tags_json FROM transcript_metadata WHERE transcript_id = ?")
+        .bind(transcript.id)
+        .first<{ tags_json?: string | null }>();
 
       await db
         .prepare(
@@ -273,8 +272,8 @@ const batchAiSuggestAction = async (formData: FormData) => {
           transcript.id,
           JSON.stringify(fears),
           JSON.stringify(cast),
-          JSON.stringify(themes),
-          JSON.stringify(tags),
+          JSON.stringify(motifs),
+          existing?.tags_json ?? JSON.stringify([]),
           JSON.stringify(locations)
         )
         .run();
@@ -307,8 +306,7 @@ const ingestTranscriptAction = async (formData: FormData) => {
   const source = String(formData.get("source") ?? "").trim();
   const fears = parseList(String(formData.get("fears") ?? ""));
   const cast = parseList(String(formData.get("cast") ?? ""));
-  const themes = parseList(String(formData.get("themes") ?? ""));
-  const tags = parseList(String(formData.get("tags") ?? ""));
+  const motifs = parseList(String(formData.get("motifs") ?? ""));
   const locations = parseList(String(formData.get("locations") ?? ""));
   const contentField = String(formData.get("content") ?? "").trim();
   const file = formData.get("file");
@@ -352,8 +350,8 @@ const ingestTranscriptAction = async (formData: FormData) => {
       transcriptId,
       JSON.stringify(fears),
       JSON.stringify(cast),
-      JSON.stringify(themes),
-      JSON.stringify(tags),
+      JSON.stringify(motifs),
+      JSON.stringify([]),
       JSON.stringify(locations)
     )
     .run();
@@ -390,9 +388,14 @@ export default async function IngestionPage({
   const resolvedSearchParams = await searchParams;
   const notice = getFirstValue(resolvedSearchParams?.notice);
   const query = getFirstValue(resolvedSearchParams?.q)?.trim();
+  const pageParam = getFirstValue(resolvedSearchParams?.page);
+  const pageNumber = Math.max(1, Number.parseInt(pageParam ?? "1", 10) || 1);
+  const pageSize = 10;
+  const offset = (pageNumber - 1) * pageSize;
 
   let transcripts: TranscriptRow[] = [];
   let dbReady = true;
+  let totalCount = 0;
 
   try {
     const db = requireDb();
@@ -414,18 +417,43 @@ export default async function IngestionPage({
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" OR ")}` : "";
     const result = await db
       .prepare(
-        `SELECT t.id, t.title, t.season, t.episode, t.word_count, t.created_at, m.fears_json, m.cast_json, m.themes_json, m.tags_json, m.locations_json
+        `SELECT t.id, t.title, t.season, t.episode, t.word_count, t.created_at, m.fears_json, m.cast_json, m.themes_json, m.locations_json
          FROM transcripts t
          LEFT JOIN transcript_metadata m ON t.id = m.transcript_id
          ${whereClause}
-         ORDER BY t.created_at DESC`
+         ORDER BY t.created_at DESC
+         LIMIT ? OFFSET ?`
       )
-      .bind(...params)
+      .bind(...params, pageSize, offset)
       .all<TranscriptRow>();
     transcripts = result.results;
+
+    const countResult = await db
+      .prepare(
+        `SELECT COUNT(*) as total
+         FROM transcripts t
+         ${whereClause}`
+      )
+      .bind(...params)
+      .first<{ total: number }>();
+    totalCount = countResult?.total ?? 0;
   } catch {
     dbReady = false;
   }
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+
+  const buildPageLink = (page: number) => {
+    const params = new URLSearchParams();
+    if (query) {
+      params.set("q", query);
+    }
+    if (page > 1) {
+      params.set("page", String(page));
+    }
+    const queryString = params.toString();
+    return queryString ? `/admin/ingestion?${queryString}` : "/admin/ingestion";
+  };
 
   return (
     <main className="page">
@@ -438,7 +466,7 @@ export default async function IngestionPage({
           </Link>
         </div>
         <p className="subhead">
-          Load transcripts, tag metadata (fears, cast, themes), and prepare
+          Load transcripts, tag metadata (fears, cast, motifs), and prepare
           chunks for retrieval.
         </p>
         <p className="hint">
@@ -519,15 +547,10 @@ export default async function IngestionPage({
           </label>
           <input id="cast" name="cast" className="input" />
 
-          <label className="form-label" htmlFor="themes">
-            Themes (comma-separated)
+          <label className="form-label" htmlFor="motifs">
+            Motifs (comma-separated)
           </label>
-          <input id="themes" name="themes" className="input" />
-
-          <label className="form-label" htmlFor="tags">
-            Tags (comma-separated)
-          </label>
-          <input id="tags" name="tags" className="input" />
+          <input id="motifs" name="motifs" className="input" />
 
           <label className="form-label" htmlFor="locations">
             Locations (comma-separated)
@@ -630,12 +653,8 @@ export default async function IngestionPage({
                           {formatJsonList(transcript.cast_json)}
                         </span>
                         <span>
-                          <strong>Themes:</strong>{" "}
+                          <strong>Motifs:</strong>{" "}
                           {formatJsonList(transcript.themes_json)}
-                        </span>
-                        <span>
-                          <strong>Tags:</strong>{" "}
-                          {formatJsonList(transcript.tags_json)}
                         </span>
                         <span>
                           <strong>Locations:</strong>{" "}
@@ -651,11 +670,37 @@ export default async function IngestionPage({
           )}
         </div>
 
+          {dbReady && transcripts.length > 0 ? (
+            <div className="pagination">
+              <div className="page-count">
+                Page {pageNumber} of {totalPages}
+              </div>
+              <div className="actions">
+                {pageNumber > 1 ? (
+                  <Link
+                    className="ghost link-button"
+                    href={buildPageLink(pageNumber - 1)}
+                  >
+                    Previous
+                  </Link>
+                ) : null}
+                {pageNumber < totalPages ? (
+                  <Link
+                    className="ghost link-button"
+                    href={buildPageLink(pageNumber + 1)}
+                  >
+                    Next
+                  </Link>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
           <div className="card">
             <h2>Bulk metadata</h2>
             <p className="subhead">
-              Apply tags to selected transcripts. Empty fields are ignored unless you
-              allow empty overwrite.
+              Apply metadata to selected transcripts. Empty fields are ignored unless
+              you allow empty overwrite.
             </p>
             <label className="form-label" htmlFor="bulk_fears">
               Fears (comma-separated)
@@ -667,15 +712,10 @@ export default async function IngestionPage({
             </label>
             <input id="bulk_cast" name="bulk_cast" className="input" />
 
-            <label className="form-label" htmlFor="bulk_themes">
-              Themes (comma-separated)
+            <label className="form-label" htmlFor="bulk_motifs">
+              Motifs (comma-separated)
             </label>
-            <input id="bulk_themes" name="bulk_themes" className="input" />
-
-            <label className="form-label" htmlFor="bulk_tags">
-              Tags (comma-separated)
-            </label>
-            <input id="bulk_tags" name="bulk_tags" className="input" />
+            <input id="bulk_motifs" name="bulk_motifs" className="input" />
 
             <label className="form-label" htmlFor="bulk_locations">
               Locations (comma-separated)
@@ -700,7 +740,7 @@ export default async function IngestionPage({
                 Apply metadata to selected
               </button>
               <button className="ghost" formAction={batchAiSuggestAction}>
-                Generate AI tags (selected)
+                Generate AI metadata (selected)
               </button>
               <div className="inline-form">
                 <label className="form-label" htmlFor="ai_limit">
