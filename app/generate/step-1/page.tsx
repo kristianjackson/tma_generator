@@ -27,6 +27,7 @@ const createRunAction = async (formData: FormData) => {
   const cast = formData.getAll("cast").map(String);
   const motifs = formData.getAll("motifs").map(String);
   const locations = formData.getAll("locations").map(String);
+  const warnings = formData.getAll("warnings").map(String);
 
   if (!seed) {
     redirect("/generate/step-1?notice=missing");
@@ -44,7 +45,7 @@ const createRunAction = async (formData: FormData) => {
       runId,
       userId,
       seed,
-      JSON.stringify({ length, fears, cast, motifs, locations }),
+      JSON.stringify({ length, fears, cast, motifs, locations, warnings }),
       "seeded",
       now,
       now
@@ -74,7 +75,8 @@ export default async function GenerateStepOnePage({
       fears: [],
       cast: [],
       motifs: [],
-      locations: []
+      locations: [],
+      warnings: []
     };
   }
 
@@ -170,6 +172,19 @@ export default async function GenerateStepOnePage({
                   <label key={location} className="checkbox-row">
                     <input type="checkbox" name="locations" value={location} />
                     {location}
+                  </label>
+                ))
+              )}
+            </div>
+            <div className="filter-card">
+              <h3>Content warnings</h3>
+              {filters.warnings.length === 0 ? (
+                <p className="subhead">No warnings ingested yet.</p>
+              ) : (
+                filters.warnings.map((warning) => (
+                  <label key={warning} className="checkbox-row">
+                    <input type="checkbox" name="warnings" value={warning} />
+                    {warning}
                   </label>
                 ))
               )}

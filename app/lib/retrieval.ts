@@ -5,6 +5,7 @@ type Filters = {
   cast?: string[];
   motifs?: string[];
   locations?: string[];
+  warnings?: string[];
   length?: string;
 };
 
@@ -18,6 +19,7 @@ type TranscriptRow = {
   cast_json?: string | null;
   themes_json?: string | null;
   locations_json?: string | null;
+  warnings_json?: string | null;
 };
 
 type ChunkRow = {
@@ -54,6 +56,7 @@ const buildKeywordSet = (seed: string, filters: Filters) => {
   (filters.locations ?? []).forEach((item) =>
     tokens.add(normalizeToken(item))
   );
+  (filters.warnings ?? []).forEach((item) => tokens.add(normalizeToken(item)));
 
   return Array.from(tokens).filter(Boolean);
 };
@@ -96,7 +99,7 @@ export const buildTranscriptContext = async (seed: string, filters: Filters) => 
   const result = await db
     .prepare(
       `SELECT t.id, t.title, t.summary, t.episode, t.season,
-        m.fears_json, m.cast_json, m.themes_json, m.locations_json
+        m.fears_json, m.cast_json, m.themes_json, m.locations_json, m.warnings_json
        FROM transcripts t
        LEFT JOIN transcript_metadata m ON t.id = m.transcript_id`
     )
@@ -108,12 +111,14 @@ export const buildTranscriptContext = async (seed: string, filters: Filters) => 
     const cast = parseJsonList(row.cast_json);
     const motifs = parseJsonList(row.themes_json);
     const locations = parseJsonList(row.locations_json);
+    const warnings = parseJsonList(row.warnings_json);
 
     const matchesFilters =
       hasAnyMatch(fears, filters.fears ?? []) &&
       hasAnyMatch(cast, filters.cast ?? []) &&
       hasAnyMatch(motifs, filters.motifs ?? []) &&
-      hasAnyMatch(locations, filters.locations ?? []);
+      hasAnyMatch(locations, filters.locations ?? []) &&
+      hasAnyMatch(warnings, filters.warnings ?? []);
 
     return {
       row,
@@ -121,6 +126,7 @@ export const buildTranscriptContext = async (seed: string, filters: Filters) => 
       cast,
       motifs,
       locations,
+      warnings,
       matchesFilters
     };
   });
@@ -135,7 +141,8 @@ export const buildTranscriptContext = async (seed: string, filters: Filters) => 
       scoreByKeywords(item.fears.join(" "), keywordSet) +
       scoreByKeywords(item.cast.join(" "), keywordSet) +
       scoreByKeywords(item.motifs.join(" "), keywordSet) +
-      scoreByKeywords(item.locations.join(" "), keywordSet);
+      scoreByKeywords(item.locations.join(" "), keywordSet) +
+      scoreByKeywords(item.warnings.join(" "), keywordSet);
     return { ...item, score };
   });
 

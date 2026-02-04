@@ -23,6 +23,7 @@ type TranscriptDetailRow = {
   themes_json?: string | null;
   tags_json?: string | null;
   locations_json?: string | null;
+  warnings_json?: string | null;
 };
 
 const getFirstValue = (value?: string | string[]) =>
@@ -82,6 +83,7 @@ const updateMetadataAction = async (formData: FormData) => {
   const motifs = parseList(String(formData.get("motifs") ?? ""));
   const existingTags = String(formData.get("tags_json") ?? "[]");
   const locations = parseList(String(formData.get("locations") ?? ""));
+  const warnings = parseList(String(formData.get("warnings") ?? ""));
 
   if (!transcriptId) {
     redirect("/admin/ingestion");
@@ -109,14 +111,15 @@ const updateMetadataAction = async (formData: FormData) => {
 
   await db
     .prepare(
-      `INSERT INTO transcript_metadata (transcript_id, fears_json, cast_json, themes_json, tags_json, locations_json)
-       VALUES (?, ?, ?, ?, ?, ?)
+      `INSERT INTO transcript_metadata (transcript_id, fears_json, cast_json, themes_json, tags_json, locations_json, warnings_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(transcript_id) DO UPDATE SET
          fears_json = excluded.fears_json,
          cast_json = excluded.cast_json,
          themes_json = excluded.themes_json,
          tags_json = excluded.tags_json,
-         locations_json = excluded.locations_json`
+         locations_json = excluded.locations_json,
+         warnings_json = excluded.warnings_json`
     )
     .bind(
       transcriptId,
@@ -124,7 +127,8 @@ const updateMetadataAction = async (formData: FormData) => {
       JSON.stringify(cast),
       JSON.stringify(motifs),
       existingTags,
-      JSON.stringify(locations)
+      JSON.stringify(locations),
+      JSON.stringify(warnings)
     )
     .run();
 
@@ -178,20 +182,23 @@ const suggestMetadataAction = async (formData: FormData) => {
     }
 
       const existing = await db
-        .prepare("SELECT tags_json FROM transcript_metadata WHERE transcript_id = ?")
+        .prepare(
+          "SELECT tags_json, warnings_json FROM transcript_metadata WHERE transcript_id = ?"
+        )
         .bind(transcript.id)
-        .first<{ tags_json?: string | null }>();
+        .first<{ tags_json?: string | null; warnings_json?: string | null }>();
 
       await db
         .prepare(
-          `INSERT INTO transcript_metadata (transcript_id, fears_json, cast_json, themes_json, tags_json, locations_json)
-           VALUES (?, ?, ?, ?, ?, ?)
+          `INSERT INTO transcript_metadata (transcript_id, fears_json, cast_json, themes_json, tags_json, locations_json, warnings_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(transcript_id) DO UPDATE SET
              fears_json = excluded.fears_json,
              cast_json = excluded.cast_json,
              themes_json = excluded.themes_json,
              tags_json = excluded.tags_json,
-             locations_json = excluded.locations_json`
+             locations_json = excluded.locations_json,
+             warnings_json = excluded.warnings_json`
         )
         .bind(
           transcript.id,
@@ -199,7 +206,8 @@ const suggestMetadataAction = async (formData: FormData) => {
           JSON.stringify(cast),
           JSON.stringify(motifs),
           existing?.tags_json ?? JSON.stringify([]),
-          JSON.stringify(locations)
+          JSON.stringify(locations),
+          existing?.warnings_json ?? JSON.stringify([])
         )
         .run();
 
@@ -232,7 +240,7 @@ export default async function IngestionDetailPage({
   const transcript = await db
     .prepare(
       `SELECT t.id, t.title, t.season, t.episode, t.summary, t.source, t.word_count, t.created_at,
-       m.fears_json, m.cast_json, m.themes_json, m.tags_json, m.locations_json
+       m.fears_json, m.cast_json, m.themes_json, m.tags_json, m.locations_json, m.warnings_json
        FROM transcripts t
        LEFT JOIN transcript_metadata m ON t.id = m.transcript_id
        WHERE t.id = ?`
@@ -248,6 +256,7 @@ export default async function IngestionDetailPage({
   const cast = parseJsonList(transcript.cast_json);
   const motifs = parseJsonList(transcript.themes_json);
   const locations = parseJsonList(transcript.locations_json);
+  const warnings = parseJsonList(transcript.warnings_json);
 
   return (
     <main className="page">
@@ -402,6 +411,16 @@ export default async function IngestionDetailPage({
             name="locations"
             className="input"
             defaultValue={locations.join(", ")}
+          />
+
+          <label className="form-label" htmlFor="warnings">
+            Content warnings (comma-separated)
+          </label>
+          <input
+            id="warnings"
+            name="warnings"
+            className="input"
+            defaultValue={warnings.join(", ")}
           />
 
           <div className="actions">

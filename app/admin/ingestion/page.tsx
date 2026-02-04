@@ -22,6 +22,7 @@ type TranscriptRow = {
   cast_json?: string | null;
   themes_json?: string | null;
   locations_json?: string | null;
+  warnings_json?: string | null;
 };
 
 type TranscriptMetaRow = {
@@ -30,6 +31,7 @@ type TranscriptMetaRow = {
   themes_json?: string | null;
   tags_json?: string | null;
   locations_json?: string | null;
+  warnings_json?: string | null;
 };
 
 const getFirstValue = (value?: string | string[]) =>
@@ -130,6 +132,7 @@ const bulkUpdateMetadataAction = async (formData: FormData) => {
   const cast = parseList(String(formData.get("bulk_cast") ?? ""));
   const motifs = parseList(String(formData.get("bulk_motifs") ?? ""));
   const locations = parseList(String(formData.get("bulk_locations") ?? ""));
+  const warnings = parseList(String(formData.get("bulk_warnings") ?? ""));
   const mode =
     String(formData.get("bulk_mode") ?? "append") === "replace"
       ? "replace"
@@ -145,7 +148,7 @@ const bulkUpdateMetadataAction = async (formData: FormData) => {
   for (const id of selectedIds) {
     const existing = await db
       .prepare(
-        "SELECT fears_json, cast_json, themes_json, tags_json, locations_json FROM transcript_metadata WHERE transcript_id = ?"
+        "SELECT fears_json, cast_json, themes_json, tags_json, locations_json, warnings_json FROM transcript_metadata WHERE transcript_id = ?"
       )
       .bind(id)
       .first<TranscriptMetaRow>();
@@ -174,17 +177,24 @@ const bulkUpdateMetadataAction = async (formData: FormData) => {
       mode,
       allowEmpty
     );
+    const nextWarnings = mergeList(
+      parseJsonList(existing?.warnings_json),
+      warnings,
+      mode,
+      allowEmpty
+    );
 
     await db
       .prepare(
-        `INSERT INTO transcript_metadata (transcript_id, fears_json, cast_json, themes_json, tags_json, locations_json)
-         VALUES (?, ?, ?, ?, ?, ?)
+        `INSERT INTO transcript_metadata (transcript_id, fears_json, cast_json, themes_json, tags_json, locations_json, warnings_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(transcript_id) DO UPDATE SET
            fears_json = excluded.fears_json,
            cast_json = excluded.cast_json,
            themes_json = excluded.themes_json,
            tags_json = excluded.tags_json,
-           locations_json = excluded.locations_json`
+           locations_json = excluded.locations_json,
+           warnings_json = excluded.warnings_json`
       )
       .bind(
         id,
@@ -192,7 +202,8 @@ const bulkUpdateMetadataAction = async (formData: FormData) => {
         JSON.stringify(nextCast),
         JSON.stringify(nextMotifs),
         existing?.tags_json ?? JSON.stringify([]),
-        JSON.stringify(nextLocations)
+        JSON.stringify(nextLocations),
+        JSON.stringify(nextWarnings)
       )
       .run();
   }
@@ -251,20 +262,23 @@ const batchAiSuggestAction = async (formData: FormData) => {
       }
 
       const existing = await db
-        .prepare("SELECT tags_json FROM transcript_metadata WHERE transcript_id = ?")
+        .prepare(
+          "SELECT tags_json, warnings_json FROM transcript_metadata WHERE transcript_id = ?"
+        )
         .bind(transcript.id)
-        .first<{ tags_json?: string | null }>();
+        .first<{ tags_json?: string | null; warnings_json?: string | null }>();
 
       await db
         .prepare(
-          `INSERT INTO transcript_metadata (transcript_id, fears_json, cast_json, themes_json, tags_json, locations_json)
-           VALUES (?, ?, ?, ?, ?, ?)
+          `INSERT INTO transcript_metadata (transcript_id, fears_json, cast_json, themes_json, tags_json, locations_json, warnings_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(transcript_id) DO UPDATE SET
              fears_json = excluded.fears_json,
              cast_json = excluded.cast_json,
              themes_json = excluded.themes_json,
              tags_json = excluded.tags_json,
-             locations_json = excluded.locations_json`
+             locations_json = excluded.locations_json,
+             warnings_json = excluded.warnings_json`
         )
         .bind(
           transcript.id,
@@ -272,7 +286,8 @@ const batchAiSuggestAction = async (formData: FormData) => {
           JSON.stringify(cast),
           JSON.stringify(motifs),
           existing?.tags_json ?? JSON.stringify([]),
-          JSON.stringify(locations)
+          JSON.stringify(locations),
+          existing?.warnings_json ?? JSON.stringify([])
         )
         .run();
     }
@@ -306,6 +321,7 @@ const ingestTranscriptAction = async (formData: FormData) => {
   const cast = parseList(String(formData.get("cast") ?? ""));
   const motifs = parseList(String(formData.get("motifs") ?? ""));
   const locations = parseList(String(formData.get("locations") ?? ""));
+  const warnings = parseList(String(formData.get("warnings") ?? ""));
   const contentField = String(formData.get("content") ?? "").trim();
   const file = formData.get("file");
   const fileContent =
@@ -342,7 +358,7 @@ const ingestTranscriptAction = async (formData: FormData) => {
 
   await db
     .prepare(
-      "INSERT INTO transcript_metadata (transcript_id, fears_json, cast_json, themes_json, tags_json, locations_json) VALUES (?, ?, ?, ?, ?, ?)"
+      "INSERT INTO transcript_metadata (transcript_id, fears_json, cast_json, themes_json, tags_json, locations_json, warnings_json) VALUES (?, ?, ?, ?, ?, ?, ?)"
     )
     .bind(
       transcriptId,
@@ -350,7 +366,8 @@ const ingestTranscriptAction = async (formData: FormData) => {
       JSON.stringify(cast),
       JSON.stringify(motifs),
       JSON.stringify([]),
-      JSON.stringify(locations)
+      JSON.stringify(locations),
+      JSON.stringify(warnings)
     )
     .run();
 
@@ -415,7 +432,7 @@ export default async function IngestionPage({
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" OR ")}` : "";
     const result = await db
       .prepare(
-        `SELECT t.id, t.title, t.season, t.episode, t.word_count, t.created_at, m.fears_json, m.cast_json, m.themes_json, m.locations_json
+        `SELECT t.id, t.title, t.season, t.episode, t.word_count, t.created_at, m.fears_json, m.cast_json, m.themes_json, m.locations_json, m.warnings_json
          FROM transcripts t
          LEFT JOIN transcript_metadata m ON t.id = m.transcript_id
          ${whereClause}
@@ -464,8 +481,8 @@ export default async function IngestionPage({
           </Link>
         </div>
         <p className="subhead">
-          Load transcripts, tag metadata (fears, cast, motifs), and prepare
-          chunks for retrieval.
+          Load transcripts, tag metadata (fears, cast, motifs, warnings), and
+          prepare chunks for retrieval.
         </p>
         <p className="hint">
           For batch PDF ingestion, run the local script in
@@ -554,6 +571,11 @@ export default async function IngestionPage({
             Locations (comma-separated)
           </label>
           <input id="locations" name="locations" className="input" />
+
+          <label className="form-label" htmlFor="warnings">
+            Content warnings (comma-separated)
+          </label>
+          <input id="warnings" name="warnings" className="input" />
 
           <label className="form-label" htmlFor="content">
             Transcript text
@@ -658,6 +680,10 @@ export default async function IngestionPage({
                           <strong>Locations:</strong>{" "}
                           {formatJsonList(transcript.locations_json)}
                         </span>
+                        <span>
+                          <strong>Warnings:</strong>{" "}
+                          {formatJsonList(transcript.warnings_json)}
+                        </span>
                       </div>
                     </td>
                     <td>{new Date(transcript.created_at).toLocaleDateString("en-US")}</td>
@@ -719,6 +745,11 @@ export default async function IngestionPage({
               Locations (comma-separated)
             </label>
             <input id="bulk_locations" name="bulk_locations" className="input" />
+
+            <label className="form-label" htmlFor="bulk_warnings">
+              Content warnings (comma-separated)
+            </label>
+            <input id="bulk_warnings" name="bulk_warnings" className="input" />
 
             <label className="form-label" htmlFor="bulk_mode">
               Bulk mode

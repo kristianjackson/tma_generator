@@ -73,8 +73,26 @@ const normalizeText = (text) =>
     .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n")
     .replace(/\f/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+
+const stripInvisible = (value) =>
+  value.replace(/[\u200B-\u200D\uFEFF]/g, "");
+
+const stripInlineBrackets = (value) =>
+  value.replace(/\[[^\]]*]/g, "");
+
+const isBracketedLine = (line) =>
+  /^\[[^\]]+\]$/.test(line.trim());
+
+const isParentheticalLine = (line) => {
+  const trimmed = line.trim();
+  if (!/^\(.*\)$/.test(trimmed)) {
+    return false;
+  }
+  return trimmed.length <= 120;
+};
 
 const isNoiseLine = (line) => {
   const trimmed = line.trim();
@@ -102,6 +120,22 @@ const isNoiseLine = (line) => {
   if (
     /^The Magnus Archives\s*[-–—]\s*MAG\s*\d{1,3}\s*[-–—].*/i.test(trimmed)
   ) {
+    return true;
+  }
+
+  if (/The Magnus Archives/i.test(trimmed) && /MAG\s*0*\d{1,3}/i.test(trimmed)) {
+    return true;
+  }
+
+  if (/^MAG\s*[-–—]?\s*\d{1,3}\s*[-–—].*/i.test(trimmed)) {
+    return true;
+  }
+
+  if (/^Rusty Quill Presents/i.test(trimmed)) {
+    return true;
+  }
+
+  if (/^The Magnus Archives Episode/i.test(trimmed)) {
     return true;
   }
 
@@ -137,6 +171,30 @@ const isNoiseLine = (line) => {
     return true;
   }
 
+  if (/^The Magnus Archives is a podcast/i.test(trimmed)) {
+    return true;
+  }
+
+  if (/^To subscribe/i.test(trimmed)) {
+    return true;
+  }
+
+  if (/^Rate and review/i.test(trimmed)) {
+    return true;
+  }
+
+  if (/^Tweet us/i.test(trimmed)) {
+    return true;
+  }
+
+  if (/^Visit us on/i.test(trimmed)) {
+    return true;
+  }
+
+  if (/^Email us/i.test(trimmed)) {
+    return true;
+  }
+
   if (/licensed under/i.test(trimmed)) {
     return true;
   }
@@ -149,13 +207,80 @@ const isNoiseLine = (line) => {
     return true;
   }
 
+  if (isBracketedLine(trimmed)) {
+    return true;
+  }
+
+  if (isParentheticalLine(trimmed)) {
+    return true;
+  }
+
   return false;
+};
+
+const extractWarningsFromLine = (line) => {
+  const trimmed = line
+    .replace(/^[-•–—\s]+/, "")
+    .replace(/^\u2212\s*/, "")
+    .trim();
+  return trimmed;
 };
 
 const cleanTranscriptText = (rawText) => {
   const lines = rawText.split(/\r?\n/);
-  const cleaned = lines.filter((line) => !isNoiseLine(line));
-  return normalizeText(cleaned.join("\n"));
+  const cleaned = [];
+  const warnings = [];
+  let inWarnings = false;
+
+  for (const line of lines) {
+    const sanitizedLine = stripInvisible(line);
+    const trimmed = sanitizedLine.trim();
+
+    if (/^Content Warnings$/i.test(trimmed)) {
+      inWarnings = true;
+      continue;
+    }
+
+    if (inWarnings) {
+      if (!trimmed) {
+        inWarnings = false;
+        continue;
+      }
+
+      if (
+        /^The Magnus Archives Theme/i.test(trimmed) ||
+        /^JONATHAN SIMS$/i.test(trimmed) ||
+        /^Rusty Quill Presents/i.test(trimmed)
+      ) {
+        inWarnings = false;
+        // fall through to normal handling for this line
+      } else {
+        const warning = extractWarningsFromLine(sanitizedLine);
+        if (warning) {
+          warnings.push(warning);
+        }
+        continue;
+      }
+    }
+
+    const withoutBrackets = stripInlineBrackets(sanitizedLine);
+    const cleanedLine = withoutBrackets.replace(/\s{2,}/g, " ").trimEnd();
+
+    if (!cleanedLine.trim()) {
+      continue;
+    }
+
+    if (isNoiseLine(cleanedLine)) {
+      continue;
+    }
+
+    cleaned.push(cleanedLine);
+  }
+
+  return {
+    text: normalizeText(cleaned.join("\n")),
+    warnings: Array.from(new Set(warnings))
+  };
 };
 
 const chunkTranscript = (content, chunkSize = 1200) => {
@@ -270,7 +395,7 @@ const main = async () => {
   for (const filename of selectedFiles) {
     const filePath = path.join(inputDir, filename);
     const rawText = await extractText(filePath);
-    const text = cleanTranscriptText(rawText || "");
+    const { text, warnings } = cleanTranscriptText(rawText || "");
 
     if (!text) {
       console.warn(`Skipping ${filename}: no text extracted`);
@@ -319,7 +444,8 @@ const main = async () => {
             "cast_json",
             "themes_json",
             "tags_json",
-            "locations_json"
+            "locations_json",
+            "warnings_json"
           ],
           [
             transcriptId,
@@ -327,7 +453,8 @@ const main = async () => {
             JSON.stringify([]),
             JSON.stringify([]),
             JSON.stringify([]),
-            JSON.stringify([])
+            JSON.stringify([]),
+            JSON.stringify(warnings)
           ]
         )
       );
@@ -338,6 +465,13 @@ const main = async () => {
         )}, word_count = ${sqlValue(wordCount)} WHERE source = ${sqlValue(
           filename
         )};`
+      );
+      statements.push(
+        `UPDATE transcript_metadata SET warnings_json = ${sqlValue(
+          JSON.stringify(warnings)
+        )} WHERE transcript_id = (SELECT id FROM transcripts WHERE source = ${sqlValue(
+          filename
+        )});`
       );
       statements.push(
         `DELETE FROM transcript_chunks WHERE transcript_id = (SELECT id FROM transcripts WHERE source = ${sqlValue(
@@ -391,6 +525,7 @@ const main = async () => {
         episode,
         wordCount,
         chunks: chunks.length,
+        warnings,
         mode
       })
     );
