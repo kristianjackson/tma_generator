@@ -2,8 +2,8 @@ import Link from "next/link";
 import { auth, clerkClient } from "@clerk/nextjs/server";
 
 type SearchParams = {
-  page?: string;
-  q?: string;
+  page?: string | string[];
+  q?: string | string[];
 };
 
 const formatDate = (value?: number | null) => {
@@ -23,15 +23,19 @@ const getPage = (value?: string) => {
   return Number.isNaN(parsed) || parsed < 1 ? 1 : parsed;
 };
 
+const getFirstValue = (value?: string | string[]) =>
+  Array.isArray(value) ? value[0] : value;
+
 export default async function AdminUsersPage({
   searchParams
 }: {
-  searchParams?: SearchParams;
+  searchParams?: Promise<SearchParams>;
 }) {
   const { userId } = await auth();
   const client = await clerkClient();
-  const page = getPage(searchParams?.page);
-  const query = searchParams?.q?.trim() ?? "";
+  const resolvedSearchParams = await searchParams;
+  const page = getPage(getFirstValue(resolvedSearchParams?.page));
+  const query = getFirstValue(resolvedSearchParams?.q)?.trim() ?? "";
   const limit = 20;
   const offset = (page - 1) * limit;
   const usersResponse = await client.users.getUserList({
