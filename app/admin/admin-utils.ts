@@ -58,3 +58,5 @@ export const hasAnyAdmin = async (
     }
   }
 };
+
+export { isUserAdmin };
