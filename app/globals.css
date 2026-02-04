@@ -92,7 +92,8 @@ a {
 }
 
 .hero-ingestion {
-  width: min(100%, 1600px);
+  width: min(100%, 1800px);
+  max-width: 96vw;
   padding: 48px;
 }
 
@@ -101,7 +102,7 @@ a {
 }
 
 .hero-ingestion .table {
-  min-width: 1100px;
+  min-width: 1300px;
 }
 
 .hero-ingestion .form {
