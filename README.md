@@ -174,9 +174,9 @@ skip persistence.
 
 ## Generation workflow (Wizard)
 
-1. **Step 1**: Seed + filters from transcript metadata.
-2. **Step 2**: Outline generation and editing.
-3. **Step 3**: Draft generation and editing.
+1. **Step 1**: Seed + filters from transcript metadata (fears, cast, motifs, locations).
+2. **Step 2**: Outline generation and editing (AI-powered when configured).
+3. **Step 3**: Draft generation and editing (AI-powered when configured).
 
 Runs and saved versions are available under **History**.
 

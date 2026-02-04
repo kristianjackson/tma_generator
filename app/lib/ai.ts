@@ -34,6 +34,26 @@ const getAiModel = () => {
   }
 };
 
+const runAiChat = async (
+  messages: Array<{ role: string; content: string }>,
+  options: Record<string, unknown> = {}
+) => {
+  const ai = getAiBinding();
+  if (!ai) {
+    throw new Error("AI binding not configured.");
+  }
+
+  const model = getAiModel();
+  const result = await ai.run(model, {
+    messages,
+    temperature: 0.7,
+    max_tokens: 1400,
+    ...options
+  });
+
+  return extractText(result);
+};
+
 const extractText = (result: unknown) => {
   if (!result) {
     return "";
@@ -149,12 +169,6 @@ const truncateTranscript = (content: string, maxChars = 12000) => {
 };
 
 export const suggestMetadata = async (title: string, content: string) => {
-  const ai = getAiBinding();
-  if (!ai) {
-    throw new Error("AI binding not configured.");
-  }
-
-  const model = getAiModel();
   const prompt = `You are tagging The Magnus Archives transcripts.
 Return JSON with keys: summary, fears, cast, motifs, locations.
 - summary: 1-2 sentences, do NOT start with "A researcher at the Magnus Institute investigates..."
@@ -164,17 +178,13 @@ Return JSON with keys: summary, fears, cast, motifs, locations.
 Return JSON only.`;
 
   const input = truncateTranscript(content);
-  const result = await ai.run(model, {
-    messages: [
-      { role: "system", content: prompt },
-      {
-        role: "user",
-        content: `Title: ${title}\n\nTranscript:\n${input}`
-      }
-    ]
-  });
-
-  const text = extractText(result);
+  const text = await runAiChat([
+    { role: "system", content: prompt },
+    {
+      role: "user",
+      content: `Title: ${title}\n\nTranscript:\n${input}`
+    }
+  ]);
   const parsed = extractJson(text);
 
   if (!parsed) {
@@ -190,4 +200,63 @@ Return JSON only.`;
     motifs,
     locations: parsed.locations
   };
+};
+
+export const generateOutline = async (input: {
+  seed: string;
+  filters: Record<string, unknown>;
+  context: string;
+}) => {
+  const prompt = `You are writing a Magnus Archives style episode outline.
+Use the provided transcript excerpts for tone and structure.
+Return a clear numbered outline with 5-7 sections, each with 2-4 bullet points.
+Avoid meta commentary.`;
+
+  const filterNotes = Object.entries(input.filters)
+    .filter(([, value]) => Array.isArray(value) && value.length > 0)
+    .map(([key, value]) => `${key}: ${(value as string[]).join(", ")}`)
+    .join("\n");
+
+  return runAiChat(
+    [
+      { role: "system", content: prompt },
+      {
+        role: "user",
+        content: `Seed:\n${input.seed}\n\nFilters:\n${
+          filterNotes || "none"
+        }\n\nTranscript excerpts:\n${input.context}`
+      }
+    ],
+    { max_tokens: 900 }
+  );
+};
+
+export const generateDraft = async (input: {
+  seed: string;
+  outline: string;
+  filters: Record<string, unknown>;
+  context: string;
+}) => {
+  const prompt = `You are writing a Magnus Archives style episode draft.
+Use the outline and transcript excerpts for tone, pacing, and voice.
+Write in the voice of a formal statement and archival notes.
+Aim for 1500-2500 words in this pass.`;
+
+  const filterNotes = Object.entries(input.filters)
+    .filter(([, value]) => Array.isArray(value) && value.length > 0)
+    .map(([key, value]) => `${key}: ${(value as string[]).join(", ")}`)
+    .join("\n");
+
+  return runAiChat(
+    [
+      { role: "system", content: prompt },
+      {
+        role: "user",
+        content: `Seed:\n${input.seed}\n\nFilters:\n${
+          filterNotes || "none"
+        }\n\nOutline:\n${input.outline}\n\nTranscript excerpts:\n${input.context}`
+      }
+    ],
+    { max_tokens: 2000 }
+  );
 };

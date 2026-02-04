@@ -3,9 +3,12 @@ import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireDb } from "../../lib/db";
+import { buildTranscriptContext } from "../../lib/retrieval";
+import { generateOutline } from "../../lib/ai";
 
 type SearchParams = {
   run?: string | string[];
+  notice?: string | string[];
 };
 
 type RunRow = {
@@ -20,25 +23,6 @@ type VersionRow = {
 
 const getFirstValue = (value?: string | string[]) =>
   Array.isArray(value) ? value[0] : value;
-
-const buildOutline = (seed: string, filters: Record<string, unknown>) => {
-  const parts = [
-    "1. Opening statement and framing",
-    "2. Early anomaly / hook",
-    "3. Escalation and key encounter",
-    "4. Revelation of the fear manifestation",
-    "5. Aftermath, archival notes, and closing"
-  ];
-
-  const filterNotes = Object.entries(filters)
-    .filter(([, value]) => Array.isArray(value) && value.length > 0)
-    .map(([key, value]) => `${key}: ${(value as string[]).join(", ")}`)
-    .join("\n");
-
-  return `Seed: ${seed}\n\n${filterNotes || "Filters: none"}\n\nOutline:\n${parts.join(
-    "\n"
-  )}`;
-};
 
 const generateOutlineAction = async (formData: FormData) => {
   "use server";
@@ -65,22 +49,35 @@ const generateOutlineAction = async (formData: FormData) => {
   }
 
   const filters = run.filters_json ? JSON.parse(run.filters_json) : {};
-  const outline = buildOutline(run.seed, filters);
+  try {
+    const context = await buildTranscriptContext(run.seed, filters);
+    const outline = await generateOutline({
+      seed: run.seed,
+      filters,
+      context: context.context
+    });
 
-  await db
-    .prepare(
-      "INSERT INTO story_versions (id, run_id, version_type, content, created_at) VALUES (?, ?, ?, ?, ?)"
-    )
-    .bind(crypto.randomUUID(), runId, "outline", outline, Date.now())
-    .run();
+    await db
+      .prepare(
+        "INSERT INTO story_versions (id, run_id, version_type, content, created_at) VALUES (?, ?, ?, ?, ?)"
+      )
+      .bind(crypto.randomUUID(), runId, "outline", outline, Date.now())
+      .run();
 
-  await db
-    .prepare("UPDATE story_runs SET status = ?, updated_at = ? WHERE id = ?")
-    .bind("outlined", Date.now(), runId)
-    .run();
+    await db
+      .prepare("UPDATE story_runs SET status = ?, updated_at = ? WHERE id = ?")
+      .bind("outlined", Date.now(), runId)
+      .run();
 
-  revalidatePath("/generate/step-2");
-  redirect(`/generate/step-2?run=${runId}`);
+    revalidatePath("/generate/step-2");
+    redirect(`/generate/step-2?run=${runId}`);
+  } catch (error) {
+    const notice =
+      error instanceof Error && error.message.toLowerCase().includes("binding")
+        ? "ai-missing"
+        : "ai-failed";
+    redirect(`/generate/step-2?run=${runId}&notice=${notice}`);
+  }
 };
 
 const saveOutlineAction = async (formData: FormData) => {
@@ -126,6 +123,7 @@ export default async function GenerateStepTwoPage({
 }) {
   const resolvedSearchParams = await searchParams;
   const runId = getFirstValue(resolvedSearchParams?.run);
+  const notice = getFirstValue(resolvedSearchParams?.notice);
 
   if (!runId) {
     return (
@@ -186,6 +184,15 @@ export default async function GenerateStepTwoPage({
           </Link>
         </div>
         <p className="subhead">Seed: {run.seed}</p>
+        {notice === "ai-missing" ? (
+          <p className="notice">
+            AI binding not configured. Add a Workers AI binding named
+            <code>AI</code> to generate outlines.
+          </p>
+        ) : null}
+        {notice === "ai-failed" ? (
+          <p className="notice">AI outline generation failed. Try again.</p>
+        ) : null}
         <div className="actions">
           <form action={generateOutlineAction}>
             <input type="hidden" name="runId" value={runId} />

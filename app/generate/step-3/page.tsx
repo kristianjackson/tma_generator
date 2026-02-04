@@ -3,9 +3,12 @@ import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireDb } from "../../lib/db";
+import { buildTranscriptContext } from "../../lib/retrieval";
+import { generateDraft } from "../../lib/ai";
 
 type SearchParams = {
   run?: string | string[];
+  notice?: string | string[];
 };
 
 type RunRow = {
@@ -19,9 +22,6 @@ type VersionRow = {
 
 const getFirstValue = (value?: string | string[]) =>
   Array.isArray(value) ? value[0] : value;
-
-const buildDraft = (seed: string, outline: string) =>
-  `Seed: ${seed}\n\nDraft (placeholder):\n${outline}\n\n[Draft content goes here...]`;
 
 const generateDraftAction = async (formData: FormData) => {
   "use server";
@@ -54,22 +54,44 @@ const generateDraftAction = async (formData: FormData) => {
     .bind(runId, "outline")
     .first<VersionRow>();
   const outline = outlineRow?.content ?? "";
-  const draft = buildDraft(run.seed, outline);
+  try {
+    const filtersRow = await db
+      .prepare("SELECT filters_json FROM story_runs WHERE id = ?")
+      .bind(runId)
+      .first<{ filters_json: string | null }>();
+    const filters = filtersRow?.filters_json
+      ? JSON.parse(filtersRow.filters_json)
+      : {};
 
-  await db
-    .prepare(
-      "INSERT INTO story_versions (id, run_id, version_type, content, created_at) VALUES (?, ?, ?, ?, ?)"
-    )
-    .bind(crypto.randomUUID(), runId, "draft", draft, Date.now())
-    .run();
+    const context = await buildTranscriptContext(run.seed, filters);
+    const draft = await generateDraft({
+      seed: run.seed,
+      outline,
+      filters,
+      context: context.context
+    });
 
-  await db
-    .prepare("UPDATE story_runs SET status = ?, updated_at = ? WHERE id = ?")
-    .bind("drafted", Date.now(), runId)
-    .run();
+    await db
+      .prepare(
+        "INSERT INTO story_versions (id, run_id, version_type, content, created_at) VALUES (?, ?, ?, ?, ?)"
+      )
+      .bind(crypto.randomUUID(), runId, "draft", draft, Date.now())
+      .run();
 
-  revalidatePath("/generate/step-3");
-  redirect(`/generate/step-3?run=${runId}`);
+    await db
+      .prepare("UPDATE story_runs SET status = ?, updated_at = ? WHERE id = ?")
+      .bind("drafted", Date.now(), runId)
+      .run();
+
+    revalidatePath("/generate/step-3");
+    redirect(`/generate/step-3?run=${runId}`);
+  } catch (error) {
+    const notice =
+      error instanceof Error && error.message.toLowerCase().includes("binding")
+        ? "ai-missing"
+        : "ai-failed";
+    redirect(`/generate/step-3?run=${runId}&notice=${notice}`);
+  }
 };
 
 const saveDraftAction = async (formData: FormData) => {
@@ -115,6 +137,7 @@ export default async function GenerateStepThreePage({
 }) {
   const resolvedSearchParams = await searchParams;
   const runId = getFirstValue(resolvedSearchParams?.run);
+  const notice = getFirstValue(resolvedSearchParams?.notice);
 
   if (!runId) {
     return (
@@ -175,6 +198,15 @@ export default async function GenerateStepThreePage({
           </Link>
         </div>
         <p className="subhead">Seed: {run.seed}</p>
+        {notice === "ai-missing" ? (
+          <p className="notice">
+            AI binding not configured. Add a Workers AI binding named
+            <code>AI</code> to generate drafts.
+          </p>
+        ) : null}
+        {notice === "ai-failed" ? (
+          <p className="notice">AI draft generation failed. Try again.</p>
+        ) : null}
         <div className="actions">
           <form action={generateDraftAction}>
             <input type="hidden" name="runId" value={runId} />
