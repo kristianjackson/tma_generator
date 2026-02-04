@@ -39,11 +39,24 @@ If `DB` is not configured, ingestion and generation screens will show a warning.
 
 The 200 transcripts can be ingested from local PDFs and loaded into D1 in bulk.
 
+Requirement: `pdftotext` from Poppler.
+
+Install (examples):
+1. Ubuntu/Debian: `sudo apt-get install poppler-utils`
+2. macOS (Homebrew): `brew install poppler`
+
 1. Place the PDFs in `data/transcript_pdfs/` (ignored by git).
 2. Run the ingest script:
 
 ```
 bun run ingest:pdfs
+```
+
+If your shell uses Bun's `node` shim and `pdftotext` isn't detected, run the
+script directly with system Node:
+
+```
+./scripts/ingest-pdfs.sh
 ```
 
 This creates:

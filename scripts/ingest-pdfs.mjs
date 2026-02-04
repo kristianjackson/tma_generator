@@ -1,7 +1,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 
+const execFileAsync = promisify(execFile);
 const DEFAULT_INPUT = "./data/transcript_pdfs";
 const DEFAULT_OUTPUT = "./data/ingest";
 
@@ -103,69 +106,50 @@ const buildInsert = (table, columns, values) =>
     .map(sqlValue)
     .join(", ")});`;
 
-const ensurePdfPolyfills = async () => {
-  if (globalThis.DOMMatrix) {
-    return;
+const resolvePdfToText = async () => {
+  const candidates = [
+    process.env.PDFTOTEXT_PATH,
+    "/usr/bin/pdftotext",
+    "/usr/local/bin/pdftotext",
+    "pdftotext"
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    try {
+      await fs.access(candidate);
+      return candidate;
+    } catch {
+      if (candidate === "pdftotext") {
+        return candidate;
+      }
+    }
   }
 
-  try {
-    const canvas = await import("@napi-rs/canvas");
-    if (canvas.DOMMatrix) {
-      globalThis.DOMMatrix = canvas.DOMMatrix;
-    }
-    if (canvas.ImageData) {
-      globalThis.ImageData = canvas.ImageData;
-    }
-    if (canvas.Path2D) {
-      globalThis.Path2D = canvas.Path2D;
-    }
-  } catch {
-    // Fall back to minimal stubs for text extraction (no rendering).
-    class DOMMatrixStub {
-      constructor() {
-        this.a = 1;
-        this.b = 0;
-        this.c = 0;
-        this.d = 1;
-        this.e = 0;
-        this.f = 0;
-      }
-      multiplySelf() {
-        return this;
-      }
-      translateSelf() {
-        return this;
-      }
-      scaleSelf() {
-        return this;
-      }
-      rotateSelf() {
-        return this;
-      }
-      invertSelf() {
-        return this;
-      }
-      transformPoint(point) {
-        return point;
-      }
-    }
+  return "pdftotext";
+};
 
-    globalThis.DOMMatrix = DOMMatrixStub;
-    globalThis.DOMMatrixReadOnly = DOMMatrixStub;
-    if (!globalThis.ImageData) {
-      globalThis.ImageData = class ImageDataStub {};
+const extractText = async (filePath) => {
+  const pdfToText = await resolvePdfToText();
+
+  try {
+    const { stdout } = await execFileAsync(pdfToText, [
+      "-layout",
+      "-q",
+      filePath,
+      "-"
+    ]);
+    return stdout ?? "";
+  } catch (error) {
+    if (error && error.code === "ENOENT") {
+      throw new Error(
+        `pdftotext not found. Install poppler-utils (Ubuntu: sudo apt-get install poppler-utils, macOS: brew install poppler) or set PDFTOTEXT_PATH. Current PATH: ${process.env.PATH}`
+      );
     }
-    if (!globalThis.Path2D) {
-      globalThis.Path2D = class Path2DStub {};
-    }
+    throw error;
   }
 };
 
 const main = async () => {
-  await ensurePdfPolyfills();
-  const pdfParseModule = await import("pdf-parse");
-  const pdfParse =
-    "default" in pdfParseModule ? pdfParseModule.default : pdfParseModule;
   const { input, output, limit } = parseArgs(process.argv.slice(2));
   const inputDir = path.resolve(input);
   const outputDir = path.resolve(output);
@@ -179,15 +163,14 @@ const main = async () => {
     return;
   }
 
-  const statements = ["BEGIN TRANSACTION;"];
+  const statements = [];
   const metadataLines = [];
   const createdAt = Date.now();
 
   for (const filename of selectedFiles) {
     const filePath = path.join(inputDir, filename);
-    const buffer = await fs.readFile(filePath);
-    const parsed = await pdfParse(buffer);
-    const text = normalizeText(parsed.text || "");
+    const rawText = await extractText(filePath);
+    const text = normalizeText(rawText || "");
 
     if (!text) {
       console.warn(`Skipping ${filename}: no text extracted`);
@@ -285,8 +268,6 @@ const main = async () => {
       })
     );
   }
-
-  statements.push("COMMIT;");
 
   await fs.mkdir(outputDir, { recursive: true });
   await fs.writeFile(

@@ -8,6 +8,13 @@
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "tma-generator-transcripts",
+      "database_id": "5cb0649a-a970-43c6-95e7-23bdcb99af98"
+    }
+  ],
   "services": [
     {
       "binding": "WORKER_SELF_REFERENCE",
