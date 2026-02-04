@@ -239,9 +239,7 @@ const batchAiSuggestAction = async (formData: FormData) => {
 
       const fears = normalizeList(suggestion.fears);
       const cast = normalizeList(suggestion.cast);
-      const motifs = normalizeList(
-        (suggestion as { motifs?: string[] }).motifs ?? suggestion.themes
-      );
+      const motifs = normalizeList(suggestion.motifs);
       const locations = normalizeList(suggestion.locations);
       const summary = String(suggestion.summary ?? "").trim();
 
