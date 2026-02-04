@@ -9,6 +9,7 @@ import {
 } from "@clerk/nextjs";
 import { Space_Grotesk } from "next/font/google";
 import Link from "next/link";
+import SiteNav from "./components/site-nav";
 import "./globals.css";
 
 const spaceGrotesk = Space_Grotesk({ subsets: ["latin"] });
@@ -40,6 +41,7 @@ export default function RootLayout({
                 </Link>
               </SignedOut>
             </div>
+            <SiteNav />
             <div className="auth">
               <SignedOut>
                 <SignInButton />

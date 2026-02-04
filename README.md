@@ -96,6 +96,14 @@ Admins are managed via Clerk user `privateMetadata`:
   actions and full-directory search).
 - On a fresh app (no admins yet), the first signed-in user can claim admin
   access from `/admin` (bootstrap flow).
+- Admin changes are logged to an audit trail when the optional KV binding is
+  configured.
+
+### Audit log (optional KV)
+
+To persist the audit log, create a Cloudflare KV namespace and bind it as
+`AUDIT_LOG`. If not configured, the admin settings page will show a warning and
+skip persistence.
 
 ## Project structure
 
@@ -106,7 +114,8 @@ Admins are managed via Clerk user `privateMetadata`:
 - `app/dashboard/layout.tsx` - guards all `/dashboard` routes
 - `app/admin/page.tsx` - user admin page using `auth()` + `clerkClient()`
 - `app/admin/layout.tsx` - guards all `/admin` routes
-- `app/admin/settings/page.tsx` - admin settings placeholder
+- `app/admin/settings/page.tsx` - admin settings + audit log view
+- `app/admin/audit-log.ts` - audit log helpers (KV-backed when configured)
 - `app/protected/page.tsx` - server-rendered route using `auth()`
 - `app/protected/layout.tsx` - guards all `/protected` routes
 - `proxy.ts` - Clerk middleware
@@ -116,3 +125,7 @@ Admins are managed via Clerk user `privateMetadata`:
 - `.dev.vars` - local Workers env file
 - `.gitignore` - ignored build artifacts
 - `public/_headers` - static asset cache headers
+- `app/profile/page.tsx` - profile settings page
+- `app/profile/layout.tsx` - guards `/profile`
+- `app/lib/user-utils.ts` - shared user display helpers
+- `app/components/site-nav.tsx` - app-wide navigation

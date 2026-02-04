@@ -1,6 +1,8 @@
-type AdminCheckUser = {
+import type { BasicUser } from "../lib/user-utils";
+import { isUserAdmin } from "../lib/user-utils";
+
+type AdminCheckUser = BasicUser & {
   id: string;
-  privateMetadata?: Record<string, unknown>;
 };
 
 type UserListResponse<T> = {
@@ -16,9 +18,6 @@ type ClerkClientLike = {
     }) => Promise<UserListResponse<AdminCheckUser> | AdminCheckUser[]>;
   };
 };
-
-export const isUserAdmin = (user: AdminCheckUser) =>
-  user.privateMetadata?.isAdmin === true;
 
 const normalizeExcludeIds = (options: {
   excludeUserId?: string;

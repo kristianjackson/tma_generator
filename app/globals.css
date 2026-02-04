@@ -29,6 +29,7 @@ a {
   align-items: center;
   justify-content: space-between;
   padding: 20px 32px;
+  gap: 16px;
 }
 
 .brand {
@@ -39,6 +40,23 @@ a {
 .brand-link {
   text-decoration: none;
   color: inherit;
+}
+
+.site-nav {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.site-nav a {
+  text-decoration: none;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.site-nav a:hover {
+  color: var(--ink);
 }
 
 .auth {
@@ -168,6 +186,18 @@ button {
   border-radius: 999px;
   padding: 12px 18px;
   font-size: 16px;
+}
+
+.form {
+  display: grid;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.form-label {
+  font-size: 14px;
+  color: var(--muted);
+  font-weight: 600;
 }
 
 .hint {

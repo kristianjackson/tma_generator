@@ -1,29 +1,5 @@
 import { auth, clerkClient } from "@clerk/nextjs/server";
-
-type ProtectedUser = {
-  firstName?: string | null;
-  lastName?: string | null;
-  username?: string | null;
-  emailAddresses: { id: string; emailAddress: string }[];
-  primaryEmailAddressId?: string | null;
-};
-
-const getPrimaryEmail = (user: ProtectedUser) =>
-  user.emailAddresses.find(
-    (address) => address.id === user.primaryEmailAddressId
-  )?.emailAddress ??
-  user.emailAddresses[0]?.emailAddress ??
-  "Unknown user";
-
-const getDisplayName = (user: ProtectedUser) => {
-  const fullName = `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim();
-
-  if (fullName) {
-    return fullName;
-  }
-
-  return user.username ?? getPrimaryEmail(user);
-};
+import { getDisplayName } from "../lib/user-utils";
 
 export default async function ProtectedPage() {
   const { userId } = await auth();

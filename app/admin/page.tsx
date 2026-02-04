@@ -3,11 +3,8 @@ import { auth, clerkClient } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { hasAnyAdmin, isUserAdmin } from "./admin-utils";
-
-type EmailAddress = {
-  id: string;
-  emailAddress: string;
-};
+import { appendAuditEntry } from "./audit-log";
+import { getDisplayName, getPrimaryEmail } from "../lib/user-utils";
 
 type ClerkUser = {
   id: string;
@@ -15,7 +12,7 @@ type ClerkUser = {
   lastName?: string | null;
   username?: string | null;
   imageUrl: string;
-  emailAddresses: EmailAddress[];
+  emailAddresses: { id: string; emailAddress: string }[];
   primaryEmailAddressId?: string | null;
   lastSignInAt?: number | null;
   createdAt: number;
@@ -65,29 +62,10 @@ const matchesQuery = (user: ClerkUser, query: string) => {
   const emailAddresses = user.emailAddresses
     .map((address) => address.emailAddress.toLowerCase())
     .join(" ");
-  const fullName = `${user.firstName ?? ""} ${user.lastName ?? ""}`
-    .trim()
-    .toLowerCase();
+  const displayName = getDisplayName(user).toLowerCase();
   const username = user.username?.toLowerCase() ?? "";
-  const haystack = `${fullName} ${emailAddresses} ${username}`;
+  const haystack = `${displayName} ${emailAddresses} ${username}`;
   return haystack.includes(query.toLowerCase());
-};
-
-const getPrimaryEmail = (user: ClerkUser) =>
-  user.emailAddresses.find(
-    (address) => address.id === user.primaryEmailAddressId
-  )?.emailAddress ??
-  user.emailAddresses[0]?.emailAddress ??
-  "—";
-
-const getDisplayName = (user: ClerkUser) => {
-  const fullName = `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim();
-
-  if (fullName) {
-    return fullName;
-  }
-
-  return user.username ?? getPrimaryEmail(user) ?? "Unknown user";
 };
 
 const fetchAllUsers = async (client: ClerkClient) => {
@@ -213,8 +191,19 @@ const updateAdminAction = async (formData: FormData) => {
   await client.users.updateUser(targetUserId, {
     privateMetadata: {
       ...(targetUser.privateMetadata ?? {}),
-      isAdmin: makeAdmin
+      isAdmin: makeAdmin,
+      role: makeAdmin ? "admin" : "member"
     }
+  });
+
+  await appendAuditEntry({
+    id: crypto.randomUUID(),
+    actorId: userId,
+    actorName: getDisplayName(currentUser),
+    action: makeAdmin ? "grant_admin" : "revoke_admin",
+    targetId: targetUserId,
+    targetName: getDisplayName(targetUser),
+    createdAt: Date.now()
   });
 
   revalidatePath("/admin");
@@ -264,16 +253,32 @@ const bulkUpdateAdminAction = async (formData: FormData) => {
     }
   }
 
-  await Promise.all(
+  const updatedUsers = await Promise.all(
     selectedIds.map(async (targetUserId) => {
       const targetUser = await client.users.getUser(targetUserId);
       await client.users.updateUser(targetUserId, {
         privateMetadata: {
           ...(targetUser.privateMetadata ?? {}),
-          isAdmin: makeAdmin
+          isAdmin: makeAdmin,
+          role: makeAdmin ? "admin" : "member"
         }
       });
+      return targetUser;
     })
+  );
+
+  await Promise.all(
+    updatedUsers.map((targetUser) =>
+      appendAuditEntry({
+        id: crypto.randomUUID(),
+        actorId: userId,
+        actorName: getDisplayName(currentUser),
+        action: makeAdmin ? "grant_admin" : "revoke_admin",
+        targetId: targetUser.id,
+        targetName: getDisplayName(targetUser),
+        createdAt: Date.now()
+      })
+    )
   );
 
   revalidatePath("/admin");
@@ -300,8 +305,19 @@ const claimAdminAction = async () => {
   await client.users.updateUser(userId, {
     privateMetadata: {
       ...(user.privateMetadata ?? {}),
-      isAdmin: true
+      isAdmin: true,
+      role: "admin"
     }
+  });
+
+  await appendAuditEntry({
+    id: crypto.randomUUID(),
+    actorId: userId,
+    actorName: getDisplayName(user),
+    action: "claim_admin",
+    targetId: userId,
+    targetName: getDisplayName(user),
+    createdAt: Date.now()
   });
 
   revalidatePath("/admin");
@@ -430,7 +446,7 @@ export default async function AdminUsersPage({
                 <th>User ID</th>
                 <th>Name</th>
                 <th>Email</th>
-                <th>Admin</th>
+                <th>Role</th>
                 <th>Last Sign-In</th>
                 <th>Created</th>
                 <th>Action</th>
@@ -443,6 +459,7 @@ export default async function AdminUsersPage({
                 const isRowAdmin = isUserAdmin(user);
                 const makeAdmin = isRowAdmin ? "false" : "true";
                 const actionLabel = isRowAdmin ? "Remove admin" : "Make admin";
+                const roleLabel = isRowAdmin ? "Admin" : "Member";
 
                 return (
                   <tr key={user.id}>
@@ -464,7 +481,7 @@ export default async function AdminUsersPage({
                     <td>{user.id}</td>
                     <td>{displayName}</td>
                     <td>{primaryEmail}</td>
-                    <td>{isRowAdmin ? "Yes" : "No"}</td>
+                    <td>{roleLabel}</td>
                     <td>{formatDate(user.lastSignInAt)}</td>
                     <td>{formatDate(user.createdAt)}</td>
                     <td>
