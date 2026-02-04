@@ -20,7 +20,9 @@ export default async function SiteNav() {
   return (
     <nav className="site-nav">
       <Link href="/dashboard">Dashboard</Link>
+      <Link href="/generate/step-1">Generate</Link>
       <Link href="/profile">Profile</Link>
+      <Link href="/runs">History</Link>
       {showAdmin ? <Link href="/admin">Admin</Link> : null}
     </nav>
   );

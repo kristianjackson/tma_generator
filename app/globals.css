@@ -194,10 +194,25 @@ button {
   margin-top: 20px;
 }
 
+.form-row {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
 .form-label {
   font-size: 14px;
   color: var(--muted);
   font-weight: 600;
+}
+
+.textarea {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 14px 16px;
+  font-size: 15px;
+  font-family: inherit;
+  resize: vertical;
 }
 
 .hint {
@@ -223,6 +238,12 @@ button {
   gap: 12px;
 }
 
+.admin-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .bulk-actions {
   display: flex;
   flex-wrap: wrap;
@@ -245,9 +266,51 @@ button {
   background: white;
 }
 
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.filter-card {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 14px;
+  background: #ffffff;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.filter-card h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+
 .checkbox {
   width: 16px;
   height: 16px;
+}
+
+.code-block {
+  white-space: pre-wrap;
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 16px;
+  border-radius: 12px;
+  font-size: 13px;
+  overflow-x: auto;
 }
 
 .table {

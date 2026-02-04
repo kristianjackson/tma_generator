@@ -393,9 +393,14 @@ export default async function AdminUsersPage({
         <p className="eyebrow">Admin</p>
         <div className="admin-header">
           <h1>User Directory</h1>
-          <Link className="ghost link-button" href="/admin/settings">
-            Admin settings
-          </Link>
+          <div className="admin-actions">
+            <Link className="ghost link-button" href="/admin/ingestion">
+              Transcript ingestion
+            </Link>
+            <Link className="ghost link-button" href="/admin/settings">
+              Admin settings
+            </Link>
+          </div>
         </div>
         <p className="subhead">{rangeLabel} Current user: {currentUserName}</p>
         {noticeMessage ? <p className="notice">{noticeMessage}</p> : null}

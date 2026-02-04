@@ -25,6 +25,16 @@ These are the relevant variables for Clerk + admin access:
 
 - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` (required for production builds)
 - `CLERK_SECRET_KEY` (required for server-side Clerk API calls)
+## Data storage (D1)
+
+The generator uses Cloudflare D1 for transcripts, metadata, runs, and versions.
+
+1. Create a D1 database (ex: `tma_generator`).
+2. Bind it as `DB` in Cloudflare Workers and local dev.
+3. Run migrations from `migrations/` (starting with `001_init.sql`).
+
+If `DB` is not configured, ingestion and generation screens will show a warning.
+
 
 Local usage:
 - For quick local dev, you can omit keys and use Clerk keyless mode.
@@ -105,6 +115,14 @@ To persist the audit log, create a Cloudflare KV namespace and bind it as
 `AUDIT_LOG`. If not configured, the admin settings page will show a warning and
 skip persistence.
 
+## Generation workflow (Wizard)
+
+1. **Step 1**: Seed + filters from transcript metadata.
+2. **Step 2**: Outline generation and editing.
+3. **Step 3**: Draft generation and editing.
+
+Runs and saved versions are available under **History**.
+
 ## Project structure
 
 - `app/` - App Router routes
@@ -116,6 +134,8 @@ skip persistence.
 - `app/admin/layout.tsx` - guards all `/admin` routes
 - `app/admin/settings/page.tsx` - admin settings + audit log view
 - `app/admin/audit-log.ts` - audit log helpers (KV-backed when configured)
+- `app/admin/ingestion/page.tsx` - transcript ingestion dashboard
+- `migrations/001_init.sql` - D1 schema
 - `app/protected/page.tsx` - server-rendered route using `auth()`
 - `app/protected/layout.tsx` - guards all `/protected` routes
 - `proxy.ts` - Clerk middleware
@@ -128,4 +148,12 @@ skip persistence.
 - `app/profile/page.tsx` - profile settings page
 - `app/profile/layout.tsx` - guards `/profile`
 - `app/lib/user-utils.ts` - shared user display helpers
+- `app/lib/db.ts` - D1 access helper
+- `app/lib/transcripts.ts` - transcript metadata helpers
 - `app/components/site-nav.tsx` - app-wide navigation
+- `app/generate/step-1/page.tsx` - wizard seed & filters
+- `app/generate/step-2/page.tsx` - outline editing
+- `app/generate/step-3/page.tsx` - draft editing
+- `app/generate/layout.tsx` - guards generator routes
+- `app/runs/page.tsx` - run history list
+- `app/runs/[id]/page.tsx` - run detail view
