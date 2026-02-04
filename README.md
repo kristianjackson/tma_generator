@@ -186,6 +186,9 @@ The transcript detail view includes an **AI suggestions** button. To enable it,
 configure a Workers AI binding named `AI` and (optionally) set `AI_MODEL` to the
 model ID you want to use. If `AI` is not configured, the UI will show a warning.
 
+You can also run AI tagging in batches from **Admin → Transcript ingestion**.
+Select transcripts, set a small batch size (5-10), and run **Generate AI tags**.
+
 ## Project structure
 
 - `app/` - App Router routes
@@ -199,6 +202,7 @@ model ID you want to use. If `AI` is not configured, the UI will show a warning.
 - `app/admin/audit-log.ts` - audit log helpers (KV-backed when configured)
 - `app/admin/ingestion/page.tsx` - transcript ingestion dashboard
 - `app/admin/ingestion/[id]/page.tsx` - edit transcript metadata
+- `app/admin/ingestion/[id]/preview/page.tsx` - transcript preview + search
 - `migrations/001_init.sql` - D1 schema
 - `app/protected/page.tsx` - server-rendered route using `auth()`
 - `app/protected/layout.tsx` - guards all `/protected` routes

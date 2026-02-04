@@ -313,6 +313,19 @@ button {
   overflow-x: auto;
 }
 
+.transcript-preview {
+  max-height: 70vh;
+  overflow-y: auto;
+  line-height: 1.7;
+}
+
+.transcript-preview mark {
+  background: #fef08a;
+  color: #1e293b;
+  padding: 0 2px;
+  border-radius: 4px;
+}
+
 .table {
   width: 100%;
   min-width: 760px;

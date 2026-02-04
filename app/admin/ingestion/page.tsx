@@ -3,9 +3,11 @@ import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireDb } from "../../lib/db";
+import { suggestMetadata } from "../../lib/ai";
 
 type SearchParams = {
   notice?: string | string[];
+  q?: string | string[];
 };
 
 type TranscriptRow = {
@@ -15,6 +17,14 @@ type TranscriptRow = {
   episode: number | null;
   word_count: number;
   created_at: number;
+  fears_json?: string | null;
+  cast_json?: string | null;
+  themes_json?: string | null;
+  tags_json?: string | null;
+  locations_json?: string | null;
+};
+
+type TranscriptMetaRow = {
   fears_json?: string | null;
   cast_json?: string | null;
   themes_json?: string | null;
@@ -49,6 +59,40 @@ const formatJsonList = (value?: string | null) => {
   return items.length > 0 ? items.join(", ") : "—";
 };
 
+const normalizeList = (value: unknown) => {
+  if (!value) {
+    return [] as string[];
+  }
+
+  const items = Array.isArray(value) ? value : [value];
+  const set = new Set(
+    items
+      .map((item) => String(item).trim())
+      .filter(Boolean)
+      .slice(0, 20)
+  );
+
+  return Array.from(set);
+};
+
+const mergeList = (
+  existing: string[],
+  updates: string[],
+  mode: "append" | "replace",
+  allowEmpty: boolean
+) => {
+  if (updates.length === 0 && !allowEmpty) {
+    return existing;
+  }
+
+  if (mode === "replace") {
+    return updates;
+  }
+
+  const set = new Set([...existing, ...updates]);
+  return Array.from(set);
+};
+
 const chunkTranscript = (content: string, chunkSize = 1200) => {
   const chunks: string[] = [];
   let buffer = "";
@@ -71,6 +115,181 @@ const chunkTranscript = (content: string, chunkSize = 1200) => {
   }
 
   return chunks;
+};
+
+const bulkUpdateMetadataAction = async (formData: FormData) => {
+  "use server";
+
+  const { userId } = await auth();
+  if (!userId) {
+    redirect("/login");
+  }
+
+  const selectedIds = formData.getAll("selectedIds").map(String).filter(Boolean);
+  const fears = parseList(String(formData.get("bulk_fears") ?? ""));
+  const cast = parseList(String(formData.get("bulk_cast") ?? ""));
+  const themes = parseList(String(formData.get("bulk_themes") ?? ""));
+  const tags = parseList(String(formData.get("bulk_tags") ?? ""));
+  const locations = parseList(String(formData.get("bulk_locations") ?? ""));
+  const mode =
+    String(formData.get("bulk_mode") ?? "append") === "replace"
+      ? "replace"
+      : "append";
+  const allowEmpty = String(formData.get("bulk_allow_empty") ?? "") === "yes";
+
+  if (selectedIds.length === 0) {
+    redirect("/admin/ingestion?notice=bulk-missing");
+  }
+
+  const db = requireDb();
+
+  for (const id of selectedIds) {
+    const existing = await db
+      .prepare(
+        "SELECT fears_json, cast_json, themes_json, tags_json, locations_json FROM transcript_metadata WHERE transcript_id = ?"
+      )
+      .bind(id)
+      .first<TranscriptMetaRow>();
+
+    const nextFears = mergeList(
+      parseJsonList(existing?.fears_json),
+      fears,
+      mode,
+      allowEmpty
+    );
+    const nextCast = mergeList(
+      parseJsonList(existing?.cast_json),
+      cast,
+      mode,
+      allowEmpty
+    );
+    const nextThemes = mergeList(
+      parseJsonList(existing?.themes_json),
+      themes,
+      mode,
+      allowEmpty
+    );
+    const nextTags = mergeList(
+      parseJsonList(existing?.tags_json),
+      tags,
+      mode,
+      allowEmpty
+    );
+    const nextLocations = mergeList(
+      parseJsonList(existing?.locations_json),
+      locations,
+      mode,
+      allowEmpty
+    );
+
+    await db
+      .prepare(
+        `INSERT INTO transcript_metadata (transcript_id, fears_json, cast_json, themes_json, tags_json, locations_json)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(transcript_id) DO UPDATE SET
+           fears_json = excluded.fears_json,
+           cast_json = excluded.cast_json,
+           themes_json = excluded.themes_json,
+           tags_json = excluded.tags_json,
+           locations_json = excluded.locations_json`
+      )
+      .bind(
+        id,
+        JSON.stringify(nextFears),
+        JSON.stringify(nextCast),
+        JSON.stringify(nextThemes),
+        JSON.stringify(nextTags),
+        JSON.stringify(nextLocations)
+      )
+      .run();
+  }
+
+  revalidatePath("/admin/ingestion");
+  revalidatePath("/generate/step-1");
+  redirect("/admin/ingestion?notice=bulk-updated");
+};
+
+const batchAiSuggestAction = async (formData: FormData) => {
+  "use server";
+
+  const { userId } = await auth();
+  if (!userId) {
+    redirect("/login");
+  }
+
+  const selectedIds = formData.getAll("selectedIds").map(String).filter(Boolean);
+  const limit = Number.parseInt(String(formData.get("ai_limit") ?? "5"), 10);
+  const effectiveLimit = Number.isNaN(limit) ? 5 : Math.min(limit, 10);
+
+  if (selectedIds.length === 0) {
+    redirect("/admin/ingestion?notice=bulk-missing");
+  }
+
+  const db = requireDb();
+  const toProcess = selectedIds.slice(0, effectiveLimit);
+
+  try {
+    for (const id of toProcess) {
+      const transcript = await db
+        .prepare("SELECT id, title, summary, content FROM transcripts WHERE id = ?")
+        .bind(id)
+        .first<{ id: string; title: string; summary: string | null; content: string }>();
+
+      if (!transcript) {
+        continue;
+      }
+
+      const suggestion = await suggestMetadata(
+        transcript.title,
+        transcript.content
+      );
+
+      const fears = normalizeList(suggestion.fears);
+      const cast = normalizeList(suggestion.cast);
+      const themes = normalizeList(suggestion.themes);
+      const tags = normalizeList(suggestion.tags);
+      const locations = normalizeList(suggestion.locations);
+      const summary = String(suggestion.summary ?? "").trim();
+
+      if (summary && !transcript.summary) {
+        await db
+          .prepare("UPDATE transcripts SET summary = ? WHERE id = ?")
+          .bind(summary, transcript.id)
+          .run();
+      }
+
+      await db
+        .prepare(
+          `INSERT INTO transcript_metadata (transcript_id, fears_json, cast_json, themes_json, tags_json, locations_json)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(transcript_id) DO UPDATE SET
+             fears_json = excluded.fears_json,
+             cast_json = excluded.cast_json,
+             themes_json = excluded.themes_json,
+             tags_json = excluded.tags_json,
+             locations_json = excluded.locations_json`
+        )
+        .bind(
+          transcript.id,
+          JSON.stringify(fears),
+          JSON.stringify(cast),
+          JSON.stringify(themes),
+          JSON.stringify(tags),
+          JSON.stringify(locations)
+        )
+        .run();
+    }
+
+    revalidatePath("/admin/ingestion");
+    revalidatePath("/generate/step-1");
+    redirect("/admin/ingestion?notice=ai-batch");
+  } catch (error) {
+    const notice =
+      error instanceof Error && error.message.toLowerCase().includes("binding")
+        ? "ai-missing"
+        : "ai-failed";
+    redirect(`/admin/ingestion?notice=${notice}`);
+  }
 };
 
 const ingestTranscriptAction = async (formData: FormData) => {
@@ -170,17 +389,38 @@ export default async function IngestionPage({
 }) {
   const resolvedSearchParams = await searchParams;
   const notice = getFirstValue(resolvedSearchParams?.notice);
+  const query = getFirstValue(resolvedSearchParams?.q)?.trim();
 
   let transcripts: TranscriptRow[] = [];
   let dbReady = true;
 
   try {
     const db = requireDb();
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+
+    if (query) {
+      const like = `%${query}%`;
+      conditions.push("(t.title LIKE ? OR t.source LIKE ?)");
+      params.push(like, like);
+
+      const numeric = Number.parseInt(query, 10);
+      if (!Number.isNaN(numeric)) {
+        conditions.push("(t.episode = ? OR t.season = ?)");
+        params.push(numeric, numeric);
+      }
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" OR ")}` : "";
     const result = await db
       .prepare(
-        "SELECT t.id, t.title, t.season, t.episode, t.word_count, t.created_at, m.fears_json, m.cast_json, m.themes_json, m.tags_json, m.locations_json FROM transcripts t LEFT JOIN transcript_metadata m ON t.id = m.transcript_id ORDER BY t.created_at DESC"
+        `SELECT t.id, t.title, t.season, t.episode, t.word_count, t.created_at, m.fears_json, m.cast_json, m.themes_json, m.tags_json, m.locations_json
+         FROM transcripts t
+         LEFT JOIN transcript_metadata m ON t.id = m.transcript_id
+         ${whereClause}
+         ORDER BY t.created_at DESC`
       )
-      .bind()
+      .bind(...params)
       .all<TranscriptRow>();
     transcripts = result.results;
   } catch {
@@ -211,6 +451,26 @@ export default async function IngestionPage({
         ) : null}
         {notice === "ingested" ? (
           <p className="notice">Transcript ingested successfully.</p>
+        ) : null}
+        {notice === "bulk-updated" ? (
+          <p className="notice">Bulk metadata update applied.</p>
+        ) : null}
+        {notice === "bulk-missing" ? (
+          <p className="notice">Select at least one transcript first.</p>
+        ) : null}
+        {notice === "ai-batch" ? (
+          <p className="notice">
+            AI suggestions applied to selected transcripts. Review and edit.
+          </p>
+        ) : null}
+        {notice === "ai-missing" ? (
+          <p className="notice">
+            AI binding not configured. Add a Workers AI binding named
+            <code>AI</code> to use suggestions.
+          </p>
+        ) : null}
+        {notice === "ai-failed" ? (
+          <p className="notice">AI batch tagging failed. Try again.</p>
         ) : null}
         {!dbReady ? (
           <p className="notice">
@@ -291,7 +551,28 @@ export default async function IngestionPage({
           </div>
         </form>
 
-        <div className="card table-card">
+        <div className="card">
+          <h2>Search transcripts</h2>
+          <form className="search" method="get">
+            <input
+              className="input"
+              name="q"
+              placeholder="Search by title, source, episode..."
+              defaultValue={query ?? ""}
+            />
+            <button className="ghost link-button" type="submit">
+              Search
+            </button>
+            {query ? (
+              <Link className="ghost link-button" href="/admin/ingestion">
+                Clear
+              </Link>
+            ) : null}
+          </form>
+        </div>
+
+        <form className="form" action={bulkUpdateMetadataAction}>
+          <div className="card table-card">
           <h2>Ingested transcripts</h2>
           {transcripts.length === 0 ? (
             <p className="subhead">No transcripts ingested yet.</p>
@@ -299,6 +580,7 @@ export default async function IngestionPage({
             <table className="table">
               <thead>
                 <tr>
+                  <th>Select</th>
                   <th>Title</th>
                   <th>Actions</th>
                   <th>Season</th>
@@ -311,6 +593,14 @@ export default async function IngestionPage({
               <tbody>
                 {transcripts.map((transcript) => (
                   <tr key={transcript.id}>
+                    <td>
+                      <input
+                        className="checkbox"
+                        type="checkbox"
+                        name="selectedIds"
+                        value={transcript.id}
+                      />
+                    </td>
                     <td>{transcript.title}</td>
                     <td>
                       <Link
@@ -318,6 +608,12 @@ export default async function IngestionPage({
                         href={`/admin/ingestion/${transcript.id}`}
                       >
                         Edit
+                      </Link>
+                      <Link
+                        className="ghost link-button"
+                        href={`/admin/ingestion/${transcript.id}/preview`}
+                      >
+                        Preview
                       </Link>
                     </td>
                     <td>{transcript.season ?? "—"}</td>
@@ -354,6 +650,72 @@ export default async function IngestionPage({
             </table>
           )}
         </div>
+
+          <div className="card">
+            <h2>Bulk metadata</h2>
+            <p className="subhead">
+              Apply tags to selected transcripts. Empty fields are ignored unless you
+              allow empty overwrite.
+            </p>
+            <label className="form-label" htmlFor="bulk_fears">
+              Fears (comma-separated)
+            </label>
+            <input id="bulk_fears" name="bulk_fears" className="input" />
+
+            <label className="form-label" htmlFor="bulk_cast">
+              Cast (comma-separated)
+            </label>
+            <input id="bulk_cast" name="bulk_cast" className="input" />
+
+            <label className="form-label" htmlFor="bulk_themes">
+              Themes (comma-separated)
+            </label>
+            <input id="bulk_themes" name="bulk_themes" className="input" />
+
+            <label className="form-label" htmlFor="bulk_tags">
+              Tags (comma-separated)
+            </label>
+            <input id="bulk_tags" name="bulk_tags" className="input" />
+
+            <label className="form-label" htmlFor="bulk_locations">
+              Locations (comma-separated)
+            </label>
+            <input id="bulk_locations" name="bulk_locations" className="input" />
+
+            <label className="form-label" htmlFor="bulk_mode">
+              Bulk mode
+            </label>
+            <select id="bulk_mode" name="bulk_mode" className="select" defaultValue="append">
+              <option value="append">Append to existing</option>
+              <option value="replace">Replace existing</option>
+            </select>
+
+            <label className="checkbox-row">
+              <input type="checkbox" name="bulk_allow_empty" value="yes" />
+              Allow empty fields to clear existing values
+            </label>
+
+            <div className="actions">
+              <button className="primary" type="submit">
+                Apply metadata to selected
+              </button>
+              <button className="ghost" formAction={batchAiSuggestAction}>
+                Generate AI tags (selected)
+              </button>
+              <div className="inline-form">
+                <label className="form-label" htmlFor="ai_limit">
+                  AI batch size (max 10)
+                </label>
+                <input
+                  id="ai_limit"
+                  name="ai_limit"
+                  className="input"
+                  defaultValue="5"
+                />
+              </div>
+            </div>
+          </div>
+        </form>
       </section>
     </main>
   );
