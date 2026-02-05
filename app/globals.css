@@ -102,11 +102,39 @@ a {
 }
 
 .hero-ingestion .table {
-  min-width: 1500px;
+  min-width: 1100px;
 }
 
 .hero-ingestion .table th {
   white-space: nowrap;
+}
+
+.hero-ingestion .table-card {
+  width: min(80vw, 1400px);
+  margin: 0 auto;
+}
+
+.hero-ingestion .table-card table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.hero-ingestion .table-card th,
+.hero-ingestion .table-card td {
+  white-space: normal;
+  word-break: break-word;
+}
+
+.hero-ingestion .table-card td:nth-child(2) {
+  width: 22%;
+}
+
+.hero-ingestion .table-card td:nth-child(3) {
+  width: 16%;
+}
+
+.hero-ingestion .table-card td:nth-child(7) {
+  width: 32%;
 }
 
 .hero-ingestion .form {

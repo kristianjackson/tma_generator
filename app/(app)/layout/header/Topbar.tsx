@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 
 const Topbar = () => {
   return (
-    <div className="py-3.5 px-6 z-40 sticky top-0 bg-[linear-gradient(90deg,#0f0533_0%,#1b0a5c_100%)]">
+    <div className="py-3.5 px-6 z-40 sticky top-0 bg-slate-900 text-white">
       <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
         <Link href="/dashboard" className="flex items-center gap-2 text-white">
           <Icon icon="solar:ghost-bold" width={20} />
