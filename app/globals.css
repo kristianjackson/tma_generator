@@ -88,7 +88,7 @@ a {
 }
 
 .hero-wide {
-  width: min(100%, 1100px);
+  width: min(90vw, 1400px);
 }
 
 .hero-ingestion {
