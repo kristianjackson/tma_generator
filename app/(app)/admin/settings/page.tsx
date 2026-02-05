@@ -229,6 +229,7 @@ export default async function AdminSettingsPage({
         .prepare(
           "SELECT user_id, daily_limit, tier, updated_at FROM user_limits ORDER BY updated_at DESC"
         )
+        .bind()
         .all<LimitOverride>();
       overrides = rows.results ?? [];
     } catch {
