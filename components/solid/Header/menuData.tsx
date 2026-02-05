@@ -25,12 +25,6 @@ const menuData: Menu[] = [
     newTab: false,
     path: "/runs",
   },
-  {
-    id: 5,
-    title: "Sign in",
-    newTab: false,
-    path: "/login",
-  },
 ];
 
 export default menuData;
