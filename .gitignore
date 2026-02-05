@@ -10,3 +10,4 @@ cloudflare-env.d.ts
 *.log
 data/transcript_pdfs/
 data/ingest/
+vendor/
