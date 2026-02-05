@@ -1,4 +1,4 @@
-import { getDb } from "./db.ts";
+import { getDb } from "./db";
 
 const DEFAULT_DAILY_LIMIT = 5;
 const WINDOW_MS = 24 * 60 * 60 * 1000;
