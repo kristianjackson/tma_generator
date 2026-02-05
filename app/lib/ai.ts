@@ -122,26 +122,33 @@ const FEAR_LOOKUP = new Map(
   })
 );
 
+const MAX_FEARS = 3;
+
 const normalizeFears = (values?: string[]) => {
   if (!values) {
     return [] as string[];
   }
 
-  const result = new Set<string>();
+  const result: string[] = [];
+  const seen = new Set<string>();
 
-  values.forEach((value) => {
+  for (const value of values) {
     const normalized = value
       .toLowerCase()
       .replace(/^the\s+/, "")
       .replace(/[^a-z]+/g, " ")
       .trim();
     const canonical = FEAR_LOOKUP.get(normalized);
-    if (canonical) {
-      result.add(canonical);
+    if (canonical && !seen.has(canonical)) {
+      result.push(canonical);
+      seen.add(canonical);
+      if (result.length >= MAX_FEARS) {
+        break;
+      }
     }
-  });
+  }
 
-  return Array.from(result);
+  return result;
 };
 
 const cleanSummary = (summary?: string) => {
@@ -172,7 +179,8 @@ export const suggestMetadata = async (title: string, content: string) => {
   const prompt = `You are tagging The Magnus Archives transcripts.
 Return JSON with keys: summary, fears, cast, motifs, locations.
 - summary: 1-2 sentences, do NOT start with "A researcher at the Magnus Institute investigates..."
-- fears: ONLY use the canonical 14 fears: ${FEAR_CANONICAL.join(", ")}.
+- fears: choose 0-3 from the canonical 14 fears: ${FEAR_CANONICAL.join(", ")}.
+  Usually 1-2 fears is correct. Order fears by strongest evidence. Never list more than 3.
 - cast/locations: proper names only if explicitly referenced.
 - motifs: optional; return [] if not confident.
 Return JSON only.`;
@@ -191,11 +199,12 @@ Return JSON only.`;
     throw new Error("AI response could not be parsed.");
   }
 
+  const fears = Array.isArray(parsed.fears) ? parsed.fears : [];
   const motifs = parsed.motifs ?? parsed.themes ?? [];
 
   return {
     summary: cleanSummary(parsed.summary),
-    fears: normalizeFears(parsed.fears),
+    fears: normalizeFears(fears),
     cast: parsed.cast,
     motifs,
     locations: parsed.locations

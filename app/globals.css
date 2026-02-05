@@ -88,7 +88,7 @@ a {
 }
 
 .hero-wide {
-  width: min(90vw, 1400px);
+  width: min(92vw, 1600px);
 }
 
 .hero-ingestion {
@@ -102,7 +102,7 @@ a {
 }
 
 .hero-ingestion .table {
-  min-width: 1100px;
+  min-width: 1280px;
 }
 
 .hero-ingestion .table th {
@@ -110,13 +110,13 @@ a {
 }
 
 .hero-ingestion .table-card {
-  width: min(80vw, 1400px);
+  width: min(92vw, 1600px);
   margin: 0 auto;
 }
 
 .hero-ingestion .table-card table {
   width: 100%;
-  table-layout: fixed;
+  table-layout: auto;
 }
 
 .hero-ingestion .table-card th,
@@ -125,16 +125,42 @@ a {
   word-break: break-word;
 }
 
+.hero-ingestion .table-card th:nth-child(1),
+.hero-ingestion .table-card td:nth-child(1) {
+  width: 44px;
+}
+
+.hero-ingestion .table-card th:nth-child(2),
 .hero-ingestion .table-card td:nth-child(2) {
   width: 22%;
 }
 
+.hero-ingestion .table-card th:nth-child(3),
 .hero-ingestion .table-card td:nth-child(3) {
-  width: 16%;
+  width: 12%;
 }
 
+.hero-ingestion .table-card th:nth-child(4),
+.hero-ingestion .table-card td:nth-child(4),
+.hero-ingestion .table-card th:nth-child(5),
+.hero-ingestion .table-card td:nth-child(5) {
+  width: 6%;
+}
+
+.hero-ingestion .table-card th:nth-child(6),
+.hero-ingestion .table-card td:nth-child(6) {
+  width: 9%;
+}
+
+.hero-ingestion .table-card th:nth-child(7),
 .hero-ingestion .table-card td:nth-child(7) {
-  width: 32%;
+  width: 30%;
+}
+
+.hero-ingestion .table-card th:nth-child(8),
+.hero-ingestion .table-card td:nth-child(8) {
+  width: 10%;
+  white-space: nowrap;
 }
 
 .hero-ingestion .form {

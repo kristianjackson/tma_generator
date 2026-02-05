@@ -94,124 +94,136 @@ const isParentheticalLine = (line) => {
   return trimmed.length <= 120;
 };
 
+const normalizeLineForNoise = (line) =>
+  line
+    .replace(/\f/g, "")
+    .replace(/\u00A0/g, " ")
+    .replace(/[–—]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
+
 const isNoiseLine = (line) => {
   const trimmed = line.trim();
+  const normalized = normalizeLineForNoise(trimmed);
 
-  if (!trimmed) {
+  if (!normalized) {
     return false;
   }
 
-  if (/^\d{1,3}$/.test(trimmed)) {
+  if (/^\d{1,3}$/.test(normalized)) {
     return true;
   }
 
-  if (/^Page\s+\d+(\s+of\s+\d+)?$/i.test(trimmed)) {
+  if (/^Page\s+\d+(\s+of\s+\d+)?$/i.test(normalized)) {
     return true;
   }
 
-  if (/^MAG\s*\d{1,3}(\s*[-–].*)?$/i.test(trimmed)) {
+  if (/^MAG\s*\d{1,3}(\s*[-–].*)?$/i.test(normalized)) {
     return true;
   }
 
-  if (/^The Magnus Archives$/i.test(trimmed)) {
+  if (/^The Magnus Archives$/i.test(normalized)) {
     return true;
   }
 
   if (
-    /^The Magnus Archives\s*[-–—]\s*MAG\s*\d{1,3}\s*[-–—].*/i.test(trimmed)
+    /^The Magnus Archives\s*[-–—]\s*MAG\s*\d{1,3}\s*[-–—].*/i.test(normalized)
   ) {
     return true;
   }
 
-  if (/The Magnus Archives/i.test(trimmed) && /MAG\s*0*\d{1,3}/i.test(trimmed)) {
+  if (
+    /The Magnus Archives/i.test(normalized) &&
+    /MAG\s*0*\d{1,3}/i.test(normalized)
+  ) {
     return true;
   }
 
-  if (/^MAG\s*[-–—]?\s*\d{1,3}\s*[-–—].*/i.test(trimmed)) {
+  if (/^MAG\s*[-–—]?\s*\d{1,3}\s*[-–—].*/i.test(normalized)) {
     return true;
   }
 
-  if (/^Rusty Quill Presents/i.test(trimmed)) {
+  if (/^Rusty Quill Presents/i.test(normalized)) {
     return true;
   }
 
-  if (/^The Magnus Archives Episode/i.test(trimmed)) {
+  if (/^The Magnus Archives Episode/i.test(normalized)) {
     return true;
   }
 
-  if (/^The Magnus Archives Theme/i.test(trimmed)) {
+  if (/^The Magnus Archives Theme/i.test(normalized)) {
     return true;
   }
 
-  if (/rustyquill\.com/i.test(trimmed)) {
+  if (/rustyquill\.com/i.test(normalized)) {
     return true;
   }
 
-  if (/Rusty Quill/i.test(trimmed)) {
+  if (/Rusty Quill/i.test(normalized)) {
     return true;
   }
 
-  if (/therustyquill/i.test(trimmed)) {
+  if (/therustyquill/i.test(normalized)) {
     return true;
   }
 
-  if (/rustyquilluk/i.test(trimmed)) {
+  if (/rustyquilluk/i.test(normalized)) {
     return true;
   }
 
-  if (/creative commons/i.test(trimmed)) {
+  if (/creative commons/i.test(normalized)) {
     return true;
   }
 
-  if (/patreon/i.test(trimmed)) {
+  if (/patreon/i.test(normalized)) {
     return true;
   }
 
-  if (/Thanks for listening/i.test(trimmed)) {
+  if (/Thanks for listening/i.test(normalized)) {
     return true;
   }
 
-  if (/^The Magnus Archives is a podcast/i.test(trimmed)) {
+  if (/^The Magnus Archives is a podcast/i.test(normalized)) {
     return true;
   }
 
-  if (/^To subscribe/i.test(trimmed)) {
+  if (/^To subscribe/i.test(normalized)) {
     return true;
   }
 
-  if (/^Rate and review/i.test(trimmed)) {
+  if (/^Rate and review/i.test(normalized)) {
     return true;
   }
 
-  if (/^Tweet us/i.test(trimmed)) {
+  if (/^Tweet us/i.test(normalized)) {
     return true;
   }
 
-  if (/^Visit us on/i.test(trimmed)) {
+  if (/^Visit us on/i.test(normalized)) {
     return true;
   }
 
-  if (/^Email us/i.test(trimmed)) {
+  if (/^Email us/i.test(normalized)) {
     return true;
   }
 
-  if (/licensed under/i.test(trimmed)) {
+  if (/licensed under/i.test(normalized)) {
     return true;
   }
 
-  if (/Transcript Re-formatted Template/i.test(trimmed)) {
+  if (/Transcript Re-formatted Template/i.test(normalized)) {
     return true;
   }
 
-  if (/^converted$/i.test(trimmed)) {
+  if (/^converted$/i.test(normalized)) {
     return true;
   }
 
-  if (isBracketedLine(trimmed)) {
+  if (isBracketedLine(normalized)) {
     return true;
   }
 
-  if (isParentheticalLine(trimmed)) {
+  if (isParentheticalLine(normalized)) {
     return true;
   }
 
@@ -231,10 +243,20 @@ const cleanTranscriptText = (rawText) => {
   const cleaned = [];
   const warnings = [];
   let inWarnings = false;
+  let inOutro = false;
 
   for (const line of lines) {
-    const sanitizedLine = stripInvisible(line);
+    const sanitizedLine = stripInvisible(line).replace(/\f/g, "");
     const trimmed = sanitizedLine.trim();
+
+    if (/Theme\s*[-–—]?\s*Outro/i.test(trimmed)) {
+      inOutro = true;
+      continue;
+    }
+
+    if (inOutro) {
+      continue;
+    }
 
     if (/^Content Warnings$/i.test(trimmed)) {
       inWarnings = true;
