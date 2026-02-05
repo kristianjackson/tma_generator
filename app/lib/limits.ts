@@ -1,5 +1,3 @@
-import { getDb } from "./db";
-
 const DEFAULT_DAILY_LIMIT = 5;
 const WINDOW_MS = 24 * 60 * 60 * 1000;
 
@@ -33,6 +31,7 @@ export const getDefaultDailyLimit = () => {
 
 export const getRunDailyLimit = async (userId?: string | null): Promise<RunLimitInfo> => {
   const envLimit = getDefaultDailyLimit();
+  const { getDb } = await import("./db");
   const db = getDb();
 
   if (!db) {
