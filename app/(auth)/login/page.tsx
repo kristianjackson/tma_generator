@@ -10,7 +10,12 @@ export default function LoginPage() {
           Clerk is running in keyless mode, so you can sign in immediately.
         </p>
         <div className="card auth-card">
-          <SignIn />
+          <SignIn
+            routing="path"
+            path="/login"
+            afterSignInUrl="/dashboard"
+            afterSignUpUrl="/dashboard"
+          />
         </div>
       </section>
     </main>
