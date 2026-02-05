@@ -11,3 +11,8 @@ cloudflare-env.d.ts
 data/transcript_pdfs/
 data/ingest/
 vendor/
+test-results/
+playwright-report/
+
+# clerk configuration (can include secrets)
+/.clerk/

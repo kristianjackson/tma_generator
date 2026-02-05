@@ -4,7 +4,12 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireDb } from "@/app/lib/db";
 import { getTranscriptFilters } from "@/app/lib/transcripts";
-import { getDailyLimit, getWindowStart, isLimitReached } from "@/app/lib/limits";
+import {
+  formatDailyLimit,
+  getRunDailyLimit,
+  getWindowStart,
+  isLimitReached
+} from "@/app/lib/limits";
 
 type SearchParams = {
   notice?: string | string[];
@@ -42,7 +47,7 @@ const createRunAction = async (formData: FormData) => {
   const now = Date.now();
   const db = requireDb();
 
-  const limit = getDailyLimit();
+  const { limit } = await getRunDailyLimit(userId);
   const windowStart = getWindowStart(now);
   const usageRow = await db
     .prepare(
@@ -94,11 +99,13 @@ export default async function GenerateStepOnePage({
   const notice = getFirstValue(resolvedSearchParams?.notice);
   const limitParam = getFirstValue(resolvedSearchParams?.limit);
   const limit = Number.parseInt(limitParam ?? "", 10);
-  const dailyLimit = Number.isNaN(limit) ? getDailyLimit() : limit;
+  const fallbackLimitInfo = await getRunDailyLimit(undefined);
+  const dailyLimit = Number.isNaN(limit) ? fallbackLimitInfo.limit : limit;
 
   let filters;
   let dbReady = true;
   let usageCount = 0;
+  let limitLabel: string | null = null;
 
   try {
     filters = await getTranscriptFilters();
@@ -113,6 +120,8 @@ export default async function GenerateStepOnePage({
         .bind(userId, windowStart)
         .first<{ total: number }>();
       usageCount = usageRow?.total ?? 0;
+      const limitInfo = await getRunDailyLimit(userId);
+      limitLabel = formatDailyLimit(limitInfo.limit);
     }
   } catch {
     dbReady = false;
@@ -143,7 +152,8 @@ export default async function GenerateStepOnePage({
         ) : null}
         {notice === "limit" ? (
           <p className="notice">
-            You have reached the daily run limit ({dailyLimit}). Try again tomorrow.
+            You have reached the daily run limit ({formatDailyLimit(dailyLimit)}). Try
+            again tomorrow.
           </p>
         ) : null}
         {!dbReady ? (
@@ -153,7 +163,8 @@ export default async function GenerateStepOnePage({
         ) : null}
         {dbReady ? (
           <p className="hint">
-            Runs used in last 24 hours: {usageCount} / {dailyLimit}
+            Runs used in last 24 hours: {usageCount} /{" "}
+            {limitLabel ?? formatDailyLimit(dailyLimit)}
           </p>
         ) : null}
         <form className="form" action={createRunAction}>

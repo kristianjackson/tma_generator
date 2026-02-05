@@ -11,7 +11,8 @@
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
-    "test": "node --test --experimental-strip-types",
+    "test": "node --test --experimental-strip-types tests/*.test.* tests/*.spec.*",
+    "test:e2e": "playwright test",
     "ingest:pdfs": "sh scripts/ingest-pdfs.sh",
     "ingest:pdfs:update": "sh scripts/ingest-pdfs.sh --mode update"
   },
@@ -68,6 +69,9 @@
     "vaul": "^1.1.2"
   },
   "devDependencies": {
+    "@opennextjs/cloudflare": "1.16.2",
+    "@playwright/test": "^1.58.1",
+    "@tailwindcss/postcss": "^4.1.6",
     "@types/aos": "3.0.7",
     "@types/chance": "1.1.6",
     "@types/lodash": "^4.17.13",
@@ -78,8 +82,6 @@
     "@types/react-is": "18.3.0",
     "@types/react-slick": "^0.23.10",
     "@types/react-syntax-highlighter": "^15.5.13",
-    "@opennextjs/cloudflare": "1.16.2",
-    "@tailwindcss/postcss": "^4.1.6",
     "postcss": "8",
     "tailwindcss": "^4.1.6",
     "tw-animate-css": "^1.3.7",
