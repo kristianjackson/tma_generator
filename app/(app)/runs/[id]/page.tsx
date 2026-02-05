@@ -169,7 +169,15 @@ export default async function RunDetailPage({
     .all<VersionRow>();
 
   const filters = run.filters_json ? JSON.parse(run.filters_json) : {};
+  const brief = typeof filters.brief === "string" ? filters.brief : "";
+  const length = filters.length ?? "episode";
+  const tone = filters.tone ?? "classic";
+  const includeCast =
+    typeof filters.includeCast === "boolean" ? filters.includeCast : true;
   const runLabel = getRunDisplayName(run.title, run.seed);
+  const finalVersion = versions.results.find(
+    (version) => version.version_type === "final"
+  );
 
   return (
     <main className="page">
@@ -182,6 +190,12 @@ export default async function RunDetailPage({
           </Link>
         </div>
         <p className="subhead">Seed: {run.seed}</p>
+        {finalVersion ? (
+          <p className="notice">
+            Final version saved on{" "}
+            {new Date(finalVersion.created_at).toLocaleString("en-US")}.
+          </p>
+        ) : null}
         <div className="card">
           <h2>Run name</h2>
           <form className="form" action={renameRunAction}>
@@ -204,19 +218,86 @@ export default async function RunDetailPage({
               Delete run
             </button>
           </form>
+          <div className="actions">
+            <Link className="ghost link-button" href={`/generate/review?run=${run.id}`}>
+              Review & edit
+            </Link>
+          </div>
         </div>
         <div className="card">
-          <h2>Filters</h2>
-          <pre className="code-block">
-            {JSON.stringify(filters, null, 2)}
-          </pre>
+          <h2>Run metadata</h2>
+          <div className="meta-grid">
+            <div>
+              <h3>Length</h3>
+              <p className="subhead">
+                {length === "short"
+                  ? "Short (2,000-3,000 words)"
+                  : length === "long"
+                    ? "Long (10,000+ words)"
+                    : "Episode (6,000-9,000 words)"}
+              </p>
+            </div>
+            <div>
+              <h3>Tone</h3>
+              <p className="subhead">{tone}</p>
+            </div>
+            <div>
+              <h3>Cast usage</h3>
+              <p className="subhead">
+                {includeCast ? "Include Magnus Institute cast" : "New cast only"}
+              </p>
+            </div>
+          </div>
+          {brief ? (
+            <div>
+              <h3>Run brief</h3>
+              <p className="subhead">{brief}</p>
+            </div>
+          ) : null}
+          <div className="meta-grid">
+            <div>
+              <h3>Fears</h3>
+              <p className="subhead">
+                {(filters.fears ?? []).length > 0
+                  ? filters.fears.join(", ")
+                  : "None selected"}
+              </p>
+            </div>
+            <div>
+              <h3>Motifs</h3>
+              <p className="subhead">
+                {(filters.motifs ?? []).length > 0
+                  ? filters.motifs.join(", ")
+                  : "None selected"}
+              </p>
+            </div>
+            <div>
+              <h3>Locations</h3>
+              <p className="subhead">
+                {(filters.locations ?? []).length > 0
+                  ? filters.locations.join(", ")
+                  : "None selected"}
+              </p>
+            </div>
+            <div>
+              <h3>Warnings</h3>
+              <p className="subhead">
+                {(filters.warnings ?? []).length > 0
+                  ? filters.warnings.join(", ")
+                  : "None selected"}
+              </p>
+            </div>
+          </div>
         </div>
         {versions.results.length === 0 ? (
           <p className="subhead">No saved versions yet.</p>
         ) : (
           versions.results.map((version) => (
             <div key={version.id} className="card">
-              <h2>{version.version_type.toUpperCase()}</h2>
+              <h2>
+                {version.version_type.toUpperCase()}
+                {version.version_type === "final" ? " (Final)" : ""}
+              </h2>
               <pre className="code-block">{version.content}</pre>
               <ExportActions
                 label="Export version"

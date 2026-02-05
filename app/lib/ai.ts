@@ -213,6 +213,7 @@ export const generateOutline = async (input: {
     length?: string;
     includeCast?: boolean;
     cast?: string[];
+    brief?: string | null;
   };
 
   const toneMap: Record<string, string> = {
@@ -252,7 +253,13 @@ Avoid meta commentary.`;
     .filter(([, value]) => Array.isArray(value) && value.length > 0)
     .map(([key, value]) => `${key}: ${(value as string[]).join(", ")}`)
     .join("\n");
-  const notesBlock = input.notes ? `Notes:\n${input.notes}` : "";
+  const runBrief =
+    typeof filters.brief === "string" && filters.brief.trim().length > 0
+      ? `Run brief:\n${filters.brief.trim()}`
+      : "";
+  const notesBlock = [runBrief, input.notes ? `Notes:\n${input.notes}` : ""]
+    .filter(Boolean)
+    .join("\n\n");
 
   return runAiChat(
     [
@@ -280,6 +287,7 @@ export const generateDraft = async (input: {
     length?: string;
     includeCast?: boolean;
     cast?: string[];
+    brief?: string | null;
   };
 
   const toneMap: Record<string, string> = {
@@ -318,7 +326,13 @@ Write in the voice of a formal statement and archival notes.`;
     .filter(([, value]) => Array.isArray(value) && value.length > 0)
     .map(([key, value]) => `${key}: ${(value as string[]).join(", ")}`)
     .join("\n");
-  const notesBlock = input.notes ? `Notes:\n${input.notes}` : "";
+  const runBrief =
+    typeof filters.brief === "string" && filters.brief.trim().length > 0
+      ? `Run brief:\n${filters.brief.trim()}`
+      : "";
+  const notesBlock = [runBrief, input.notes ? `Notes:\n${input.notes}` : ""]
+    .filter(Boolean)
+    .join("\n\n");
 
   return runAiChat(
     [

@@ -12,7 +12,6 @@
     "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "test": "node --test --experimental-strip-types tests/*.test.* tests/*.spec.*",
-    "test:e2e": "playwright test",
     "ingest:pdfs": "sh scripts/ingest-pdfs.sh",
     "ingest:pdfs:update": "sh scripts/ingest-pdfs.sh --mode update"
   },
@@ -70,7 +69,6 @@
   },
   "devDependencies": {
     "@opennextjs/cloudflare": "1.16.2",
-    "@playwright/test": "^1.58.1",
     "@tailwindcss/postcss": "^4.1.6",
     "@types/aos": "3.0.7",
     "@types/chance": "1.1.6",

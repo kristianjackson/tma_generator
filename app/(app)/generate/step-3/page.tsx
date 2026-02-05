@@ -334,6 +334,9 @@ export default async function GenerateStepThreePage({
             <button className="primary" type="submit">
               Save draft
             </button>
+            <Link className="ghost link-button" href={`/generate/review?run=${runId}`}>
+              Review & edit
+            </Link>
             <Link className="ghost link-button" href="/runs">
               View history
             </Link>

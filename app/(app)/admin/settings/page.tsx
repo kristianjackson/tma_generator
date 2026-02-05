@@ -8,21 +8,13 @@ import {
   getDefaultDailyLimit,
   parseDailyLimitValue
 } from "@/app/lib/limits";
-import { getDisplayName, getPrimaryEmail } from "@/app/lib/user-utils";
+import { getDisplayName } from "@/app/lib/user-utils";
+import { TIER_PRESETS } from "@/app/lib/tiers";
 import { isUserAdmin } from "../admin-utils";
 import { appendAuditEntry, listAuditEntries } from "../audit-log";
 
 type SearchParams = {
   notice?: string | string[];
-};
-
-type LimitOverride = {
-  user_id: string;
-  daily_limit: number;
-  tier?: string | null;
-  updated_at: number;
-  displayName?: string;
-  email?: string | null;
 };
 
 const getFirstValue = (value?: string | string[]) =>
@@ -56,7 +48,7 @@ const requireAdmin = async () => {
     redirect("/dashboard");
   }
 
-  return { userId, client, currentUser };
+  return { userId, currentUser };
 };
 
 const updateGlobalLimitAction = async (formData: FormData) => {
@@ -121,77 +113,6 @@ const clearGlobalLimitAction = async (formData: FormData) => {
   redirect(addNotice(returnTo, "global-cleared"));
 };
 
-const saveUserLimitAction = async (formData: FormData) => {
-  "use server";
-
-  const { userId, currentUser } = await requireAdmin();
-  const returnTo = String(formData.get("returnTo") ?? "/admin/settings");
-  const targetUserId = String(formData.get("target_user_id") ?? "").trim();
-  const rawLimit = String(formData.get("user_limit") ?? "").trim();
-  const tier = String(formData.get("tier") ?? "").trim() || null;
-  const parsedLimit = parseDailyLimitValue(rawLimit);
-
-  if (!targetUserId) {
-    redirect(addNotice(returnTo, "missing-user"));
-  }
-
-  if (parsedLimit === null) {
-    redirect(addNotice(returnTo, "invalid-limit"));
-  }
-
-  const db = requireDb();
-  const now = Date.now();
-
-  await db
-    .prepare(
-      "INSERT INTO user_limits (user_id, daily_limit, tier, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET daily_limit = excluded.daily_limit, tier = excluded.tier, updated_at = excluded.updated_at"
-    )
-    .bind(targetUserId, parsedLimit, tier, now)
-    .run();
-
-  await appendAuditEntry({
-    id: crypto.randomUUID(),
-    actorId: userId,
-    actorName: getDisplayName(currentUser),
-    action: "set_user_run_limit",
-    targetId: targetUserId,
-    targetName: `${parsedLimit}${tier ? ` (${tier})` : ""}`,
-    createdAt: now
-  });
-
-  revalidatePath("/admin/settings");
-  redirect(addNotice(returnTo, "user-updated"));
-};
-
-const removeUserLimitAction = async (formData: FormData) => {
-  "use server";
-
-  const { userId, currentUser } = await requireAdmin();
-  const returnTo = String(formData.get("returnTo") ?? "/admin/settings");
-  const targetUserId = String(formData.get("target_user_id") ?? "").trim();
-
-  if (!targetUserId) {
-    redirect(returnTo);
-  }
-
-  const db = requireDb();
-  const now = Date.now();
-  await db.prepare("DELETE FROM user_limits WHERE user_id = ?").bind(targetUserId).run();
-
-  await appendAuditEntry({
-    id: crypto.randomUUID(),
-    actorId: userId,
-    actorName: getDisplayName(currentUser),
-    action: "remove_user_run_limit",
-    targetId: targetUserId,
-    targetName: "deleted",
-    createdAt: now
-  });
-
-  revalidatePath("/admin/settings");
-  redirect(addNotice(returnTo, "user-removed"));
-};
-
 export default async function AdminSettingsPage({
   searchParams
 }: {
@@ -200,7 +121,7 @@ export default async function AdminSettingsPage({
   const resolvedSearchParams = await searchParams;
   const notice = getFirstValue(resolvedSearchParams?.notice);
 
-  const { client } = await requireAdmin();
+  await requireAdmin();
 
   const db = getDb();
   const defaultLimit = getDefaultDailyLimit();
@@ -208,7 +129,6 @@ export default async function AdminSettingsPage({
   let globalLimit = defaultLimit;
   let globalOverride = false;
   let globalUpdatedAt: number | null = null;
-  let overrides: LimitOverride[] = [];
 
   if (!db) {
     dbReady = false;
@@ -225,38 +145,11 @@ export default async function AdminSettingsPage({
         globalUpdatedAt = globalRow?.updated_at ?? null;
       }
 
-      const rows = await db
-        .prepare(
-          "SELECT user_id, daily_limit, tier, updated_at FROM user_limits ORDER BY updated_at DESC"
-        )
-        .bind()
-        .all<LimitOverride>();
-      overrides = rows.results ?? [];
     } catch {
       dbReady = false;
-      overrides = [];
       globalLimit = defaultLimit;
     }
   }
-
-  const enrichedOverrides = await Promise.all(
-    overrides.map(async (override) => {
-      try {
-        const user = await client.users.getUser(override.user_id);
-        return {
-          ...override,
-          displayName: getDisplayName(user),
-          email: getPrimaryEmail(user)
-        };
-      } catch {
-        return {
-          ...override,
-          displayName: override.user_id,
-          email: null
-        };
-      }
-    })
-  );
 
   const { entries, configured } = await listAuditEntries(30);
   const returnTo = "/admin/settings";
@@ -277,19 +170,10 @@ export default async function AdminSettingsPage({
         {notice === "global-cleared" ? (
           <p className="notice">Global run limit cleared. Using env default.</p>
         ) : null}
-        {notice === "user-updated" ? (
-          <p className="notice">User limit saved.</p>
-        ) : null}
-        {notice === "user-removed" ? (
-          <p className="notice">User limit removed.</p>
-        ) : null}
         {notice === "invalid-limit" ? (
           <p className="notice">
             Provide a valid number for the daily limit. Use 0 for unlimited.
           </p>
-        ) : null}
-        {notice === "missing-user" ? (
-          <p className="notice">Add a user ID before saving an override.</p>
         ) : null}
 
         {!dbReady ? (
@@ -335,84 +219,23 @@ export default async function AdminSettingsPage({
               </form>
             </div>
 
-            <div className="card table-card">
-              <h2>User run overrides</h2>
+            <div className="card">
+              <h2>User tiers</h2>
               <p className="subhead">
-                Overrides apply before the global limit. Use 0 for unlimited.
+                Per-user run limits are managed on the User Directory screen.
               </p>
-              <form className="form" action={saveUserLimitAction}>
-                <label className="form-label" htmlFor="target_user_id">
-                  User ID
-                </label>
-                <input
-                  id="target_user_id"
-                  name="target_user_id"
-                  className="input"
-                  placeholder="user_123..."
-                />
-                <label className="form-label" htmlFor="user_limit">
-                  Daily limit
-                </label>
-                <input
-                  id="user_limit"
-                  name="user_limit"
-                  type="number"
-                  className="input"
-                  min={0}
-                />
-                <label className="form-label" htmlFor="tier">
-                  Tier label (optional)
-                </label>
-                <input id="tier" name="tier" className="input" placeholder="pro" />
-                <input type="hidden" name="returnTo" value={returnTo} />
-                <div className="actions">
-                  <button className="primary" type="submit">
-                    Save override
-                  </button>
-                </div>
-              </form>
-
-              {enrichedOverrides.length === 0 ? (
-                <p className="subhead">No user overrides yet.</p>
-              ) : (
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>User</th>
-                      <th>Limit</th>
-                      <th>Tier</th>
-                      <th>Updated</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {enrichedOverrides.map((override) => (
-                      <tr key={override.user_id}>
-                        <td>
-                          <div>{override.displayName ?? override.user_id}</div>
-                          <div className="hint">{override.email ?? override.user_id}</div>
-                        </td>
-                        <td>{formatDailyLimit(override.daily_limit)}</td>
-                        <td>{override.tier ?? "—"}</td>
-                        <td>{formatDate(override.updated_at)}</td>
-                        <td>
-                          <form action={removeUserLimitAction}>
-                            <input
-                              type="hidden"
-                              name="target_user_id"
-                              value={override.user_id}
-                            />
-                            <input type="hidden" name="returnTo" value={returnTo} />
-                            <button className="ghost" type="submit">
-                              Remove
-                            </button>
-                          </form>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
+              <ul>
+                {TIER_PRESETS.map((preset) => (
+                  <li key={preset.id}>
+                    {preset.label}: {formatDailyLimit(preset.limit)} runs/day
+                  </li>
+                ))}
+              </ul>
+              <div className="actions">
+                <Link className="ghost link-button" href="/admin">
+                  Manage users
+                </Link>
+              </div>
             </div>
           </>
         )}

@@ -5,6 +5,9 @@ import { redirect } from "next/navigation";
 import { hasAnyAdmin, isUserAdmin } from "./admin-utils";
 import { appendAuditEntry } from "./audit-log";
 import { getDisplayName, getPrimaryEmail } from "@/app/lib/user-utils";
+import { getDb, requireDb } from "@/app/lib/db";
+import { formatDailyLimit, getDefaultDailyLimit, parseDailyLimitValue } from "@/app/lib/limits";
+import { TIER_PRESETS } from "@/app/lib/tiers";
 
 type ClerkUser = {
   id: string;
@@ -151,6 +154,77 @@ const buildReturnUrl = (page: number, query: string) => {
 const addNotice = (url: string, notice: string) => {
   const joiner = url.includes("?") ? "&" : "?";
   return `${url}${joiner}notice=${notice}`;
+};
+
+const updateTierAction = async (formData: FormData) => {
+  "use server";
+
+  const { userId } = await auth();
+
+  if (!userId) {
+    redirect("/login");
+  }
+
+  const client = await clerkClient();
+  const currentUser = await client.users.getUser(userId);
+
+  if (!isUserAdmin(currentUser)) {
+    redirect("/dashboard");
+  }
+
+  const targetUserId = String(formData.get("userId") ?? "");
+  const tier = String(formData.get("tier") ?? "");
+  const returnTo = String(formData.get("returnTo") ?? "/admin");
+
+  if (!targetUserId) {
+    redirect(returnTo);
+  }
+
+  const db = requireDb();
+  const now = Date.now();
+
+  if (tier === "global") {
+    await db.prepare("DELETE FROM user_limits WHERE user_id = ?").bind(targetUserId).run();
+
+    await appendAuditEntry({
+      id: crypto.randomUUID(),
+      actorId: userId,
+      actorName: getDisplayName(currentUser),
+      action: "remove_user_run_limit",
+      targetId: targetUserId,
+      targetName: "global",
+      createdAt: now
+    });
+
+    revalidatePath("/admin");
+    redirect(addNotice(returnTo, "tier-cleared"));
+  }
+
+  const preset = getTierPreset(tier);
+
+  if (!preset) {
+    redirect(addNotice(returnTo, "invalid-tier"));
+  }
+
+  await db
+    .prepare(
+      "INSERT INTO user_limits (user_id, daily_limit, tier, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET daily_limit = excluded.daily_limit, tier = excluded.tier, updated_at = excluded.updated_at"
+    )
+    .bind(targetUserId, preset.limit, preset.id, now)
+    .run();
+
+  await appendAuditEntry({
+    id: crypto.randomUUID(),
+    actorId: userId,
+    actorName: getDisplayName(currentUser),
+    action: "set_user_run_limit",
+    targetId: targetUserId,
+    targetName: `${preset.label} (${preset.limit})`,
+    createdAt: now
+  });
+
+  revalidatePath("/admin");
+  redirect(addNotice(returnTo, "tier-updated"));
 };
 
 const updateAdminAction = async (formData: FormData) => {
@@ -385,7 +459,46 @@ export default async function AdminUsersPage({
         ? "Select at least one user for bulk actions."
         : notice === "invalid-action"
           ? "Choose a bulk action to apply."
+          : notice === "tier-updated"
+            ? "User tier updated."
+            : notice === "tier-cleared"
+              ? "User tier cleared."
+              : notice === "invalid-tier"
+                ? "Choose a valid tier preset."
           : null;
+
+  const db = getDb();
+  const tiersEnabled = Boolean(db);
+  let tierOverrides = new Map<string, { tier: string | null; limit: number }>();
+  let globalLimit = getDefaultDailyLimit();
+
+  if (db && filteredUsers.length > 0) {
+    try {
+      const globalRow = await db
+        .prepare("SELECT value FROM app_settings WHERE key = ?")
+        .bind("run_daily_limit")
+        .first<{ value?: string | null }>();
+      const parsedGlobal = parseDailyLimitValue(globalRow?.value ?? null);
+      if (parsedGlobal !== null) {
+        globalLimit = parsedGlobal;
+      }
+      const placeholders = filteredUsers.map(() => "?").join(", ");
+      const rows = await db
+        .prepare(
+          `SELECT user_id, daily_limit, tier FROM user_limits WHERE user_id IN (${placeholders})`
+        )
+        .bind(...filteredUsers.map((user) => user.id))
+        .all<{ user_id: string; daily_limit: number; tier?: string | null }>();
+      tierOverrides = new Map(
+        rows.results.map((row) => [
+          row.user_id,
+          { tier: row.tier ?? null, limit: row.daily_limit }
+        ])
+      );
+    } catch {
+      tierOverrides = new Map();
+    }
+  }
 
   return (
     <main className="page">
@@ -404,6 +517,12 @@ export default async function AdminUsersPage({
         </div>
         <p className="subhead">{rangeLabel} Current user: {currentUserName}</p>
         {noticeMessage ? <p className="notice">{noticeMessage}</p> : null}
+        {!tiersEnabled ? (
+          <p className="notice">
+            D1 is not configured. Tier controls are disabled until the database
+            is connected.
+          </p>
+        ) : null}
         <div className="toolbar">
           <form className="search" action="/admin" method="get">
             <input
@@ -452,6 +571,8 @@ export default async function AdminUsersPage({
                 <th>Name</th>
                 <th>Email</th>
                 <th>Role</th>
+                <th>Tier</th>
+                <th>Daily limit</th>
                 <th>Last Sign-In</th>
                 <th>Created</th>
                 <th>Action</th>
@@ -465,6 +586,11 @@ export default async function AdminUsersPage({
                 const makeAdmin = isRowAdmin ? "false" : "true";
                 const actionLabel = isRowAdmin ? "Remove admin" : "Make admin";
                 const roleLabel = isRowAdmin ? "Admin" : "Member";
+                const tierInfo = tierOverrides.get(user.id);
+                const currentTier = tierInfo?.tier ?? "global";
+                const limitLabel = tierInfo
+                  ? formatDailyLimit(tierInfo.limit)
+                  : formatDailyLimit(globalLimit);
 
                 return (
                   <tr key={user.id}>
@@ -487,6 +613,30 @@ export default async function AdminUsersPage({
                     <td>{displayName}</td>
                     <td>{primaryEmail}</td>
                     <td>{roleLabel}</td>
+                    <td>
+                      <form className="inline-form" action={updateTierAction}>
+                        <input type="hidden" name="userId" value={user.id} />
+                        <input type="hidden" name="returnTo" value={returnTo} />
+                        <select
+                          className="select"
+                          name="tier"
+                          defaultValue={currentTier}
+                          aria-label={`Tier for ${displayName}`}
+                          disabled={!tiersEnabled}
+                        >
+                          <option value="global">Use global default</option>
+                          {TIER_PRESETS.map((preset) => (
+                            <option key={preset.id} value={preset.id}>
+                              {preset.label}
+                            </option>
+                          ))}
+                        </select>
+                        <button className="ghost small-button" type="submit">
+                          Save
+                        </button>
+                      </form>
+                    </td>
+                    <td>{limitLabel}</td>
                     <td>{formatDate(user.lastSignInAt)}</td>
                     <td>{formatDate(user.createdAt)}</td>
                     <td>

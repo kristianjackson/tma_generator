@@ -30,6 +30,7 @@ const createRunAction = async (formData: FormData) => {
 
   const seed = String(formData.get("seed") ?? "").trim();
   const title = String(formData.get("title") ?? "").trim();
+  const brief = String(formData.get("brief") ?? "").trim();
   const length = String(formData.get("length") ?? "episode").trim();
   const tone = String(formData.get("tone") ?? "classic").trim();
   const includeCast = String(formData.get("include_cast") ?? "") === "yes";
@@ -71,6 +72,7 @@ const createRunAction = async (formData: FormData) => {
       seed,
       title || null,
       JSON.stringify({
+        brief: brief || null,
         length,
         tone,
         includeCast,
@@ -183,6 +185,17 @@ export default async function GenerateStepOnePage({
             rows={4}
             placeholder="A statement about a subway tunnel that folds into itself..."
             required
+          />
+
+          <label className="form-label" htmlFor="brief">
+            Run brief (optional)
+          </label>
+          <textarea
+            id="brief"
+            name="brief"
+            className="textarea"
+            rows={3}
+            placeholder="Key beats, tone specifics, or must-include elements..."
           />
 
           <label className="form-label" htmlFor="length">
