@@ -7,7 +7,7 @@ import { appendAuditEntry } from "./audit-log";
 import { getDisplayName, getPrimaryEmail } from "@/app/lib/user-utils";
 import { getDb, requireDb } from "@/app/lib/db";
 import { formatDailyLimit, getDefaultDailyLimit, parseDailyLimitValue } from "@/app/lib/limits";
-import { TIER_PRESETS } from "@/app/lib/tiers";
+import { getTierPreset, TIER_PRESETS } from "@/app/lib/tiers";
 
 type ClerkUser = {
   id: string;
