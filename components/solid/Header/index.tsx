@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { SignedIn, SignedOut } from "@clerk/nextjs";
 
 import ThemeToggler from "./ThemeToggler";
 import menuData from "./menuData";
@@ -142,18 +143,22 @@ const Header = () => {
 
           <div className="mt-7 flex items-center gap-6 xl:mt-0">
             <ThemeToggler />
-            <Link
-              href="/dashboard"
-              className="text-regular font-medium text-waterloo hover:text-primary"
-            >
-              Dashboard
-            </Link>
-            <a
-              href="/login"
-              className="flex items-center justify-center rounded-full bg-primary px-7.5 py-2.5 text-regular text-white duration-300 ease-in-out hover:bg-primaryho"
-            >
-              Sign in
-            </a>
+            <SignedIn>
+              <Link
+                href="/dashboard"
+                className="flex items-center justify-center rounded-full bg-primary px-7.5 py-2.5 text-regular text-white duration-300 ease-in-out hover:bg-primaryho"
+              >
+                Dashboard
+              </Link>
+            </SignedIn>
+            <SignedOut>
+              <a
+                href="/login"
+                className="flex items-center justify-center rounded-full bg-primary px-7.5 py-2.5 text-regular text-white duration-300 ease-in-out hover:bg-primaryho"
+              >
+                Sign in
+              </a>
+            </SignedOut>
           </div>
         </div>
       </div>
