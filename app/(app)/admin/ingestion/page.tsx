@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { requireDb } from "@/app/lib/db";
 import { suggestMetadata } from "@/app/lib/ai";
 import SelectAllCheckbox from "@/app/components/SelectAllCheckbox";
+import FormStatusIndicator from "@/app/components/FormStatusIndicator";
 
 type SearchParams = {
   notice?: string | string[];
@@ -774,6 +775,7 @@ export default async function IngestionPage({
               <button className="ghost" formAction={batchAiSuggestAction}>
                 Generate AI metadata (selected)
               </button>
+              <FormStatusIndicator label="Applying…" />
               <div className="inline-form">
                 <label className="form-label" htmlFor="ai_limit">
                   AI batch size (max 10)
