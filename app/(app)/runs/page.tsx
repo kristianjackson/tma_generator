@@ -10,6 +10,7 @@ type RunRow = {
   title: string | null;
   seed: string;
   status: string;
+  final_count: number;
   created_at: number;
   updated_at: number;
 };
@@ -68,7 +69,11 @@ export default async function RunsPage({
   const db = requireDb();
   const result = await db
     .prepare(
-      "SELECT id, title, seed, status, created_at, updated_at FROM story_runs WHERE user_id = ? ORDER BY updated_at DESC"
+      `SELECT r.id, r.title, r.seed, r.status, r.created_at, r.updated_at,
+        (SELECT COUNT(*) FROM story_versions v WHERE v.run_id = r.id AND v.version_type = 'final') as final_count
+       FROM story_runs r
+       WHERE r.user_id = ?
+       ORDER BY r.updated_at DESC`
     )
     .bind(userId)
     .all<RunRow>();
@@ -97,6 +102,7 @@ export default async function RunsPage({
                 <tr>
                   <th>Name</th>
                   <th>Status</th>
+                  <th>Final</th>
                   <th>Updated</th>
                   <th>Actions</th>
                 </tr>
@@ -106,6 +112,7 @@ export default async function RunsPage({
                   <tr key={run.id}>
                     <td>{getRunDisplayName(run.title, run.seed)}</td>
                     <td>{run.status}</td>
+                    <td>{run.final_count > 0 ? "Finalized" : "—"}</td>
                     <td>{new Date(run.updated_at).toLocaleDateString("en-US")}</td>
                     <td>
                       <Link className="ghost link-button" href={`/runs/${run.id}`}>

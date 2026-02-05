@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache";
 import { requireDb } from "@/app/lib/db";
 import ExportActions from "@/app/components/ExportActions";
 import { getRunDisplayName } from "@/app/lib/run-utils";
+import { getRunDailyLimit } from "@/app/lib/limits";
+import { formatTierLabel } from "@/app/lib/tiers";
 
 type RunRow = {
   id: string;
@@ -178,6 +180,7 @@ export default async function RunDetailPage({
   const finalVersion = versions.results.find(
     (version) => version.version_type === "final"
   );
+  const tierInfo = await getRunDailyLimit(userId);
 
   return (
     <main className="page">
@@ -222,6 +225,23 @@ export default async function RunDetailPage({
             <Link className="ghost link-button" href={`/generate/review?run=${run.id}`}>
               Review & edit
             </Link>
+          </div>
+        </div>
+        <div className="card">
+          <h2>Tier & limits</h2>
+          <div className="meta-grid">
+            <div>
+              <h3>Tier</h3>
+              <p className="subhead">{formatTierLabel(tierInfo.tier)}</p>
+            </div>
+            <div>
+              <h3>Daily limit</h3>
+              <p className="subhead">{tierInfo.limit <= 0 ? "Unlimited" : tierInfo.limit}</p>
+            </div>
+            <div>
+              <h3>Limit source</h3>
+              <p className="subhead">{tierInfo.source}</p>
+            </div>
           </div>
         </div>
         <div className="card">
