@@ -229,6 +229,24 @@ button {
   margin: 16px 0 24px;
 }
 
+.export-actions {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.export-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.export-status {
+  font-size: 13px;
+  color: var(--muted);
+}
+
 .search {
   display: flex;
   gap: 12px;

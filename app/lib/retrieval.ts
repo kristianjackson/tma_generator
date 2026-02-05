@@ -7,6 +7,8 @@ type Filters = {
   locations?: string[];
   warnings?: string[];
   length?: string;
+  tone?: string;
+  includeCast?: boolean;
 };
 
 type TranscriptRow = {
@@ -51,7 +53,8 @@ const buildKeywordSet = (seed: string, filters: Filters) => {
 
   seedTokens.forEach((token) => tokens.add(token));
   (filters.fears ?? []).forEach((item) => tokens.add(normalizeToken(item)));
-  (filters.cast ?? []).forEach((item) => tokens.add(normalizeToken(item)));
+  const castTokens = filters.includeCast === false ? [] : filters.cast ?? [];
+  castTokens.forEach((item) => tokens.add(normalizeToken(item)));
   (filters.motifs ?? []).forEach((item) => tokens.add(normalizeToken(item)));
   (filters.locations ?? []).forEach((item) =>
     tokens.add(normalizeToken(item))
@@ -113,9 +116,12 @@ export const buildTranscriptContext = async (seed: string, filters: Filters) => 
     const locations = parseJsonList(row.locations_json);
     const warnings = parseJsonList(row.warnings_json);
 
+    const castFilters =
+      filters.includeCast === false ? [] : filters.cast ?? [];
+
     const matchesFilters =
       hasAnyMatch(fears, filters.fears ?? []) &&
-      hasAnyMatch(cast, filters.cast ?? []) &&
+      hasAnyMatch(cast, castFilters) &&
       hasAnyMatch(motifs, filters.motifs ?? []) &&
       hasAnyMatch(locations, filters.locations ?? []) &&
       hasAnyMatch(warnings, filters.warnings ?? []);

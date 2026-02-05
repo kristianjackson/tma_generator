@@ -1,149 +1,80 @@
-import Link from 'next/link'
-import { useTheme } from 'next-themes'
-import { usePathname } from 'next/navigation'
-import SidebarContent from './Sidebaritems'
-import SimpleBar from 'simplebar-react'
-import { Icon } from '@iconify/react'
-import FullLogo from '../shared/logo/FullLogo'
-import { Button } from '@/components/ui/button'
-import {
-  AMLogo,
-  AMMenu,
-  AMMenuItem,
-  AMSidebar,
-  AMSubmenu,
-} from 'tailwind-sidebar'
-import 'tailwind-sidebar/styles.css'
+"use client";
 
-const renderSidebarItems = (
-  items: any[],
-  currentPath: string,
-  onClose?: () => void,
-  isSubItem: boolean = false
-) => {
-  return items.map((item, index) => {
-    const isSelected = currentPath === item?.url
-    const IconComp = item.icon || null
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { Icon } from "@iconify/react";
+import clsx from "clsx";
+import FullLogo from "../shared/logo/FullLogo";
+import SidebarContent from "./Sidebaritems";
 
-    const iconElement = IconComp ? (
-      <Icon icon={IconComp} height={21} width={21} />
-    ) : (
-      <Icon icon={'ri:checkbox-blank-circle-line'} height={9} width={9} />
-    )
+type SidebarLayoutProps = {
+  onClose?: () => void;
+};
 
-    // Heading
-    if (item.heading) {
-      return (
-        <div className='mb-1' key={item.heading}>
-          <AMMenu
-            subHeading={item.heading}
-            ClassName='hide-menu leading-21 text-charcoal font-bold uppercase text-xs dark:text-darkcharcoal'
-          />
-        </div>
-      )
-    }
-
-    // Submenu
-    if (item.children?.length) {
-      return (
-        <AMSubmenu
-          key={item.id}
-          icon={iconElement}
-          title={item.name}
-          ClassName='mt-0.5 text-link dark:text-darklink !rounded-3xl'>
-          {renderSidebarItems(item.children, currentPath, onClose, true)}
-        </AMSubmenu>
-      )
-    }
-
-    // Regular menu item
-    const linkTarget = item.url?.startsWith('https') ? '_blank' : '_self'
-
-    const itemClassNames = isSubItem
-      ? `mt-0.5 text-link dark:text-darklink !hover:bg-transparent ${
-          isSelected ? '!bg-transparent !text-primary' : ''
-        } !px-1.5 `
-      : `hover:bg-lightprimary! hover:text-primary! mt-0.5 text-link dark:text-darklink ${isSelected ? '!bg-lightprimary !text-primary !hover-bg-lightprimary' : ' ' } !rounded-3xl`
-
-    return (
-      <div onClick={onClose} key={index}>
-        <AMMenuItem
-          key={item.id}
-          icon={iconElement}
-          isSelected={isSelected}
-          link={item.url || undefined}
-          target={linkTarget}
-          badge={!!item.isPro}
-          badgeColor='bg-lightsecondary'
-          badgeTextColor='text-secondary'
-          disabled={item.disabled}
-          badgeContent={item.isPro ? 'Pro' : undefined}
-          component={Link}
-          className={`${itemClassNames}`}>
-          <span className='truncate flex-1'>{item.title || item.name}</span>
-        </AMMenuItem>
-      </div>
-    )
-  })
-}
-
-const SidebarLayout = ({ onClose }: { onClose?: () => void }) => {
-  const pathname = usePathname()
-  const { theme } = useTheme()
-
-  // Only allow "light" or "dark" for AMSidebar
-  const sidebarMode = theme === 'light' || theme === 'dark' ? theme : undefined
+const SidebarLayout = ({ onClose }: SidebarLayoutProps) => {
+  const pathname = usePathname();
 
   return (
-    <AMSidebar
-      collapsible='none'
-      animation={true}
-      showProfile={false}
-      width={'270px'}
-      showTrigger={false}
-      mode={sidebarMode}
-      className='fixed left-0 top-0 xl:top-[70px] border-none shadow-boxShadow bg-background z-10 h-screen'>
-      {/* Logo */}
-      <div className='px-4 flex items-center brand-logo overflow-hidden'>
-        <AMLogo component={Link} href='/' img=''>
+    <aside className="h-screen w-64 border-r border-slate-200 bg-white px-4 py-6 dark:border-slate-800 dark:bg-slate-900">
+      <div className="mb-6 flex items-center">
+        <Link href="/" className="flex items-center gap-2" onClick={onClose}>
           <FullLogo />
-        </AMLogo>
+        </Link>
       </div>
 
-      {/* Sidebar items */}
-
-      <SimpleBar className='h-[calc(100vh-100px)]'>
-        <div className='px-6'>
-          {SidebarContent.map((section, index) => (
-            <div key={index}>
-              {renderSidebarItems(
-                [
-                  ...(section.heading ? [{ heading: section.heading }] : []),
-                  ...(section.children || []),
-                ],
-                pathname,
-                onClose
-              )}
-            </div>
-          ))}
-
-          <div className='mt-9 overflow-hidden'>
-            <div className='flex w-full bg-lightprimary rounded-lg p-6'>
-              <div className='w-full'>
-                <h5 className='text-base text-charcoal'>Need help?</h5>
-                <p className='text-sm text-muted mt-1'>
-                  Check the ingestion checklist or start a new run.
-                </p>
-                <Button className='whitespace-nowrap mt-3 text-[13px]' asChild>
-                  <Link href='/generate/step-1'>New run</Link>
-                </Button>
-              </div>
+      <nav className="h-[calc(100vh-140px)] overflow-y-auto pr-1">
+        {SidebarContent.map((section, sectionIndex) => (
+          <div key={section.heading ?? sectionIndex} className="mb-6">
+            {section.heading ? (
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                {section.heading}
+              </p>
+            ) : null}
+            <div className="mt-2 space-y-1">
+              {(section.children ?? []).map((item) => {
+                const isActive = pathname === item.url;
+                return (
+                  <Link
+                    key={item.id ?? item.url}
+                    href={item.url ?? "#"}
+                    onClick={onClose}
+                    className={clsx(
+                      "flex items-center gap-3 rounded-2xl px-3 py-2 text-sm font-medium transition",
+                      isActive
+                        ? "bg-lightprimary text-primary"
+                        : "text-slate-600 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+                    )}
+                  >
+                    <Icon
+                      icon={item.icon ?? "ri:checkbox-blank-circle-line"}
+                      width={18}
+                    />
+                    <span className="truncate">{item.name}</span>
+                  </Link>
+                );
+              })}
             </div>
           </div>
-        </div>
-      </SimpleBar>
-    </AMSidebar>
-  )
-}
+        ))}
 
-export default SidebarLayout
+        <div className="mt-8 rounded-2xl bg-lightprimary/60 p-4 dark:bg-slate-800">
+          <h5 className="text-sm font-semibold text-slate-900 dark:text-white">
+            Need help?
+          </h5>
+          <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+            Check the ingestion checklist or start a new run.
+          </p>
+          <Link
+            href="/generate/step-1"
+            className="mt-3 inline-flex items-center justify-center rounded-full bg-white px-4 py-2 text-xs font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50 dark:bg-slate-700 dark:text-white"
+            onClick={onClose}
+          >
+            New run
+          </Link>
+        </div>
+      </nav>
+    </aside>
+  );
+};
+
+export default SidebarLayout;

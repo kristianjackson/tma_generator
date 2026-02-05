@@ -1,16 +1,56 @@
 import Link from "next/link";
 import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { requireDb } from "@/app/lib/db";
+import { getRunDisplayName } from "@/app/lib/run-utils";
 
 type RunRow = {
   id: string;
+  title: string | null;
   seed: string;
   status: string;
   created_at: number;
   updated_at: number;
 };
 
-export default async function RunsPage() {
+type SearchParams = {
+  notice?: string | string[];
+};
+
+const getFirstValue = (value?: string | string[]) =>
+  Array.isArray(value) ? value[0] : value;
+
+const deleteRunAction = async (formData: FormData) => {
+  "use server";
+
+  const { userId } = await auth();
+  if (!userId) {
+    redirect("/login");
+  }
+
+  const runId = String(formData.get("runId") ?? "");
+  if (!runId) {
+    redirect("/runs");
+  }
+
+  const db = requireDb();
+  await db
+    .prepare("DELETE FROM story_runs WHERE id = ? AND user_id = ?")
+    .bind(runId, userId)
+    .run();
+
+  revalidatePath("/runs");
+  redirect("/runs?notice=deleted");
+};
+
+export default async function RunsPage({
+  searchParams
+}: {
+  searchParams?: Promise<SearchParams>;
+}) {
+  const resolvedSearchParams = await searchParams;
+  const notice = getFirstValue(resolvedSearchParams?.notice);
   const { userId } = await auth();
 
   if (!userId) {
@@ -28,7 +68,7 @@ export default async function RunsPage() {
   const db = requireDb();
   const result = await db
     .prepare(
-      "SELECT id, seed, status, created_at, updated_at FROM story_runs WHERE user_id = ? ORDER BY updated_at DESC"
+      "SELECT id, title, seed, status, created_at, updated_at FROM story_runs WHERE user_id = ? ORDER BY updated_at DESC"
     )
     .bind(userId)
     .all<RunRow>();
@@ -45,6 +85,9 @@ export default async function RunsPage() {
             New run
           </Link>
         </div>
+        {notice === "deleted" ? (
+          <p className="notice">Run deleted.</p>
+        ) : null}
         {runs.length === 0 ? (
           <p className="subhead">No runs saved yet.</p>
         ) : (
@@ -52,22 +95,28 @@ export default async function RunsPage() {
             <table className="table">
               <thead>
                 <tr>
-                  <th>Seed</th>
+                  <th>Name</th>
                   <th>Status</th>
                   <th>Updated</th>
-                  <th>Action</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {runs.map((run) => (
                   <tr key={run.id}>
-                    <td>{run.seed}</td>
+                    <td>{getRunDisplayName(run.title, run.seed)}</td>
                     <td>{run.status}</td>
                     <td>{new Date(run.updated_at).toLocaleDateString("en-US")}</td>
                     <td>
                       <Link className="ghost link-button" href={`/runs/${run.id}`}>
                         View
                       </Link>
+                      <form className="inline-form" action={deleteRunAction}>
+                        <input type="hidden" name="runId" value={run.id} />
+                        <button className="ghost" type="submit">
+                          Delete
+                        </button>
+                      </form>
                     </td>
                   </tr>
                 ))}

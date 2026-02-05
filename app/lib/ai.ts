@@ -208,8 +208,43 @@ export const generateOutline = async (input: {
   context: string;
   notes?: string;
 }) => {
+  const filters = input.filters as {
+    tone?: string;
+    length?: string;
+    includeCast?: boolean;
+    cast?: string[];
+  };
+
+  const toneMap: Record<string, string> = {
+    classic: "Classic TMA: archival, understated, formal statement voice.",
+    modern: "Modern horror: sharper pacing, cinematic clarity, restrained dialogue.",
+    experimental: "Experimental: fragmented, unsettling pacing, uncanny transitions."
+  };
+
+  const toneNote =
+    filters.tone && toneMap[filters.tone]
+      ? toneMap[filters.tone]
+      : "Classic TMA: archival, understated, formal statement voice.";
+
+  const lengthNote =
+    filters.length === "short"
+      ? "Short outline: aim for 2,000-3,000 words in the final draft."
+      : filters.length === "long"
+        ? "Long outline: aim for 10,000+ words in the final draft."
+        : "Episode outline: aim for 6,000-9,000 words in the final draft.";
+
+  const castNote =
+    filters.includeCast === false
+      ? "Avoid established Magnus Institute cast. Use new names only."
+      : (filters.cast ?? []).length > 0
+        ? "You may include 1-2 named cast members from the selected list."
+        : "Keep cast minimal unless needed.";
+
   const prompt = `You are writing a Magnus Archives style episode outline.
 Use the provided transcript excerpts for tone and structure.
+Tone: ${toneNote}
+Length guidance: ${lengthNote}
+Cast guidance: ${castNote}
 Return a clear numbered outline with 5-7 sections, each with 2-4 bullet points.
 Avoid meta commentary.`;
 
@@ -240,10 +275,44 @@ export const generateDraft = async (input: {
   context: string;
   notes?: string;
 }) => {
+  const filters = input.filters as {
+    tone?: string;
+    length?: string;
+    includeCast?: boolean;
+    cast?: string[];
+  };
+
+  const toneMap: Record<string, string> = {
+    classic: "Classic TMA: archival, understated, formal statement voice.",
+    modern: "Modern horror: sharper pacing, cinematic clarity, restrained dialogue.",
+    experimental: "Experimental: fragmented, unsettling pacing, uncanny transitions."
+  };
+
+  const toneNote =
+    filters.tone && toneMap[filters.tone]
+      ? toneMap[filters.tone]
+      : "Classic TMA: archival, understated, formal statement voice.";
+
+  const lengthNote =
+    filters.length === "short"
+      ? "Target 2,000-3,000 words."
+      : filters.length === "long"
+        ? "Target 10,000+ words."
+        : "Target 6,000-9,000 words.";
+
+  const castNote =
+    filters.includeCast === false
+      ? "Avoid established Magnus Institute cast. Use new names only."
+      : (filters.cast ?? []).length > 0
+        ? "You may include 1-2 named cast members from the selected list."
+        : "Keep cast minimal unless needed.";
+
   const prompt = `You are writing a Magnus Archives style episode draft.
 Use the outline and transcript excerpts for tone, pacing, and voice.
-Write in the voice of a formal statement and archival notes.
-Aim for 1500-2500 words in this pass.`;
+Tone: ${toneNote}
+Length guidance: ${lengthNote}
+Cast guidance: ${castNote}
+Write in the voice of a formal statement and archival notes.`;
 
   const filterNotes = Object.entries(input.filters)
     .filter(([, value]) => Array.isArray(value) && value.length > 0)

@@ -4,9 +4,11 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireDb } from "@/app/lib/db";
 import { getTranscriptFilters } from "@/app/lib/transcripts";
+import { getDailyLimit, getWindowStart, isLimitReached } from "@/app/lib/limits";
 
 type SearchParams = {
   notice?: string | string[];
+  limit?: string | string[];
 };
 
 const getFirstValue = (value?: string | string[]) =>
@@ -22,7 +24,10 @@ const createRunAction = async (formData: FormData) => {
   }
 
   const seed = String(formData.get("seed") ?? "").trim();
+  const title = String(formData.get("title") ?? "").trim();
   const length = String(formData.get("length") ?? "episode").trim();
+  const tone = String(formData.get("tone") ?? "classic").trim();
+  const includeCast = String(formData.get("include_cast") ?? "") === "yes";
   const fears = formData.getAll("fears").map(String);
   const cast = formData.getAll("cast").map(String);
   const motifs = formData.getAll("motifs").map(String);
@@ -37,15 +42,39 @@ const createRunAction = async (formData: FormData) => {
   const now = Date.now();
   const db = requireDb();
 
+  const limit = getDailyLimit();
+  const windowStart = getWindowStart(now);
+  const usageRow = await db
+    .prepare(
+      "SELECT COUNT(*) as total FROM story_runs WHERE user_id = ? AND created_at >= ?"
+    )
+    .bind(userId, windowStart)
+    .first<{ total: number }>();
+  const usageCount = usageRow?.total ?? 0;
+
+  if (isLimitReached(usageCount, limit)) {
+    redirect(`/generate/step-1?notice=limit&limit=${limit}`);
+  }
+
   await db
     .prepare(
-      "INSERT INTO story_runs (id, user_id, seed, filters_json, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+      "INSERT INTO story_runs (id, user_id, seed, title, filters_json, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
     )
     .bind(
       runId,
       userId,
       seed,
-      JSON.stringify({ length, fears, cast, motifs, locations, warnings }),
+      title || null,
+      JSON.stringify({
+        length,
+        tone,
+        includeCast,
+        fears,
+        cast,
+        motifs,
+        locations,
+        warnings
+      }),
       "seeded",
       now,
       now
@@ -63,12 +92,28 @@ export default async function GenerateStepOnePage({
 }) {
   const resolvedSearchParams = await searchParams;
   const notice = getFirstValue(resolvedSearchParams?.notice);
+  const limitParam = getFirstValue(resolvedSearchParams?.limit);
+  const limit = Number.parseInt(limitParam ?? "", 10);
+  const dailyLimit = Number.isNaN(limit) ? getDailyLimit() : limit;
 
   let filters;
   let dbReady = true;
+  let usageCount = 0;
 
   try {
     filters = await getTranscriptFilters();
+    const { userId } = await auth();
+    if (userId) {
+      const db = requireDb();
+      const windowStart = getWindowStart();
+      const usageRow = await db
+        .prepare(
+          "SELECT COUNT(*) as total FROM story_runs WHERE user_id = ? AND created_at >= ?"
+        )
+        .bind(userId, windowStart)
+        .first<{ total: number }>();
+      usageCount = usageRow?.total ?? 0;
+    }
   } catch {
     dbReady = false;
     filters = {
@@ -96,12 +141,27 @@ export default async function GenerateStepOnePage({
         {notice === "missing" ? (
           <p className="notice">Please add a seed before continuing.</p>
         ) : null}
+        {notice === "limit" ? (
+          <p className="notice">
+            You have reached the daily run limit ({dailyLimit}). Try again tomorrow.
+          </p>
+        ) : null}
         {!dbReady ? (
           <p className="notice">
             D1 is not configured yet. Ingest transcripts before generating.
           </p>
         ) : null}
+        {dbReady ? (
+          <p className="hint">
+            Runs used in last 24 hours: {usageCount} / {dailyLimit}
+          </p>
+        ) : null}
         <form className="form" action={createRunAction}>
+          <label className="form-label" htmlFor="title">
+            Run name (optional)
+          </label>
+          <input id="title" name="title" className="input" />
+
           <label className="form-label" htmlFor="seed">
             Seed idea
           </label>
@@ -122,6 +182,20 @@ export default async function GenerateStepOnePage({
             <option value="short">Short (2,000-3,000 words)</option>
             <option value="long">Long (10,000+ words)</option>
           </select>
+
+          <label className="form-label" htmlFor="tone">
+            Tone preset
+          </label>
+          <select id="tone" name="tone" className="select" defaultValue="classic">
+            <option value="classic">Classic TMA (archival, understated)</option>
+            <option value="modern">Modern horror (sharper, cinematic)</option>
+            <option value="experimental">Experimental (unnerving, fragmented)</option>
+          </select>
+
+          <label className="checkbox-row">
+            <input type="checkbox" name="include_cast" value="yes" defaultChecked />
+            Include established Magnus Institute cast
+          </label>
 
           <div className="filter-grid">
             <div className="filter-card">

@@ -7,6 +7,8 @@ import { buildTranscriptContext } from "@/app/lib/retrieval";
 import { generateDraft } from "@/app/lib/ai";
 import AutoSubmitForm from "@/app/components/AutoSubmitForm";
 import SubmitButton from "@/app/components/SubmitButton";
+import ExportActions from "@/app/components/ExportActions";
+import { getRunDisplayName } from "@/app/lib/run-utils";
 
 type SearchParams = {
   run?: string | string[];
@@ -16,6 +18,7 @@ type SearchParams = {
 type RunRow = {
   id: string;
   seed: string;
+  title?: string | null;
 };
 
 type VersionRow = {
@@ -148,6 +151,49 @@ const saveDraftAction = async (formData: FormData) => {
   redirect(`/generate/step-3?run=${runId}`);
 };
 
+const restoreDraftAction = async (formData: FormData) => {
+  "use server";
+
+  const { userId } = await auth();
+  if (!userId) {
+    redirect("/login");
+  }
+
+  const runId = String(formData.get("runId") ?? "");
+  const versionId = String(formData.get("versionId") ?? "");
+
+  if (!runId || !versionId) {
+    redirect("/generate/step-1");
+  }
+
+  const db = requireDb();
+  const version = await db
+    .prepare(
+      "SELECT content FROM story_versions WHERE id = ? AND run_id = ? AND version_type = ?"
+    )
+    .bind(versionId, runId, "draft")
+    .first<VersionRow>();
+
+  if (!version?.content) {
+    redirect(`/generate/step-3?run=${runId}`);
+  }
+
+  await db
+    .prepare(
+      "INSERT INTO story_versions (id, run_id, version_type, content, created_at) VALUES (?, ?, ?, ?, ?)"
+    )
+    .bind(crypto.randomUUID(), runId, "draft", version.content, Date.now())
+    .run();
+
+  await db
+    .prepare("UPDATE story_runs SET status = ?, updated_at = ? WHERE id = ?")
+    .bind("drafted", Date.now(), runId)
+    .run();
+
+  revalidatePath("/generate/step-3");
+  redirect(`/generate/step-3?run=${runId}`);
+};
+
 export default async function GenerateStepThreePage({
   searchParams
 }: {
@@ -176,7 +222,7 @@ export default async function GenerateStepThreePage({
 
   const db = requireDb();
   const run = await db
-    .prepare("SELECT id, seed FROM story_runs WHERE id = ?")
+    .prepare("SELECT id, seed, title FROM story_runs WHERE id = ?")
     .bind(runId)
     .first<RunRow>();
 
@@ -206,6 +252,7 @@ export default async function GenerateStepThreePage({
   const draft = draftRow?.content ?? "";
   const shouldAutoGenerate = !draft && !notice;
   const hasDraft = Boolean(draft);
+  const runLabel = getRunDisplayName(run.title, run.seed);
 
   const draftVersions = await db
     .prepare(
@@ -292,6 +339,13 @@ export default async function GenerateStepThreePage({
             </Link>
           </div>
         </form>
+        {draft ? (
+          <ExportActions
+            label="Export draft"
+            content={draft}
+            filenameBase={`${runLabel}-draft`}
+          />
+        ) : null}
 
         <div className="card">
           <h2>Draft revisions</h2>
@@ -304,6 +358,13 @@ export default async function GenerateStepThreePage({
                   {new Date(version.created_at).toLocaleString("en-US")}
                 </summary>
                 <pre className="code-block">{version.content}</pre>
+                <form className="actions" action={restoreDraftAction}>
+                  <input type="hidden" name="runId" value={runId} />
+                  <input type="hidden" name="versionId" value={version.id} />
+                  <button className="ghost" type="submit">
+                    Restore this draft
+                  </button>
+                </form>
               </details>
             ))
           )}
