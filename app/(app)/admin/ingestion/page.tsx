@@ -234,6 +234,8 @@ const batchAiSuggestAction = async (formData: FormData) => {
   const db = requireDb();
   const toProcess = selectedIds.slice(0, effectiveLimit);
 
+  let notice = "ai-batch";
+
   try {
     for (const id of toProcess) {
       const transcript = await db
@@ -296,14 +298,22 @@ const batchAiSuggestAction = async (formData: FormData) => {
 
     revalidatePath("/admin/ingestion");
     revalidatePath("/generate/step-1");
-    redirect("/admin/ingestion?notice=ai-batch");
   } catch (error) {
-    const notice =
+    if (
+      error &&
+      typeof error === "object" &&
+      "digest" in error &&
+      String((error as { digest?: string }).digest).includes("NEXT_REDIRECT")
+    ) {
+      throw error;
+    }
+    notice =
       error instanceof Error && error.message.toLowerCase().includes("binding")
         ? "ai-missing"
         : "ai-failed";
-    redirect(`/admin/ingestion?notice=${notice}`);
   }
+
+  redirect(`/admin/ingestion?notice=${notice}`);
 };
 
 const ingestTranscriptAction = async (formData: FormData) => {
