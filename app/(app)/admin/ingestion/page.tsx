@@ -6,11 +6,16 @@ import { requireDb } from "@/app/lib/db";
 import { suggestMetadata } from "@/app/lib/ai";
 import SelectAllCheckbox from "@/app/components/SelectAllCheckbox";
 import FormStatusIndicator from "@/app/components/FormStatusIndicator";
+import AutoSubmitForm from "@/app/components/AutoSubmitForm";
 
 type SearchParams = {
   notice?: string | string[];
   q?: string | string[];
   page?: string | string[];
+  ai_done?: string | string[];
+  ai_total?: string | string[];
+  ai_cursor?: string | string[];
+  ai_all_batch?: string | string[];
 };
 
 type TranscriptRow = {
@@ -34,6 +39,13 @@ type TranscriptMetaRow = {
   tags_json?: string | null;
   locations_json?: string | null;
   warnings_json?: string | null;
+};
+
+type AiTranscriptRow = {
+  id: string;
+  title: string;
+  summary: string | null;
+  content: string;
 };
 
 const getFirstValue = (value?: string | string[]) =>
@@ -119,6 +131,56 @@ const chunkTranscript = (content: string, chunkSize = 1200) => {
   }
 
   return chunks;
+};
+
+const applyAiMetadataToTranscript = async (
+  db: ReturnType<typeof requireDb>,
+  transcript: AiTranscriptRow
+) => {
+  const suggestion = await suggestMetadata(transcript.title, transcript.content);
+
+  const fears = normalizeList(suggestion.fears);
+  const cast = normalizeList(suggestion.cast);
+  const motifs = normalizeList(suggestion.motifs);
+  const locations = normalizeList(suggestion.locations);
+  const summary = String(suggestion.summary ?? "").trim();
+
+  if (summary && !transcript.summary) {
+    await db
+      .prepare("UPDATE transcripts SET summary = ? WHERE id = ?")
+      .bind(summary, transcript.id)
+      .run();
+  }
+
+  const existing = await db
+    .prepare(
+      "SELECT tags_json, warnings_json FROM transcript_metadata WHERE transcript_id = ?"
+    )
+    .bind(transcript.id)
+    .first<{ tags_json?: string | null; warnings_json?: string | null }>();
+
+  await db
+    .prepare(
+      `INSERT INTO transcript_metadata (transcript_id, fears_json, cast_json, themes_json, tags_json, locations_json, warnings_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(transcript_id) DO UPDATE SET
+         fears_json = excluded.fears_json,
+         cast_json = excluded.cast_json,
+         themes_json = excluded.themes_json,
+         tags_json = excluded.tags_json,
+         locations_json = excluded.locations_json,
+         warnings_json = excluded.warnings_json`
+    )
+    .bind(
+      transcript.id,
+      JSON.stringify(fears),
+      JSON.stringify(cast),
+      JSON.stringify(motifs),
+      existing?.tags_json ?? JSON.stringify([]),
+      JSON.stringify(locations),
+      existing?.warnings_json ?? JSON.stringify([])
+    )
+    .run();
 };
 
 const bulkUpdateMetadataAction = async (formData: FormData) => {
@@ -241,59 +303,13 @@ const batchAiSuggestAction = async (formData: FormData) => {
       const transcript = await db
         .prepare("SELECT id, title, summary, content FROM transcripts WHERE id = ?")
         .bind(id)
-        .first<{ id: string; title: string; summary: string | null; content: string }>();
+        .first<AiTranscriptRow>();
 
       if (!transcript) {
         continue;
       }
 
-      const suggestion = await suggestMetadata(
-        transcript.title,
-        transcript.content
-      );
-
-      const fears = normalizeList(suggestion.fears);
-      const cast = normalizeList(suggestion.cast);
-      const motifs = normalizeList(suggestion.motifs);
-      const locations = normalizeList(suggestion.locations);
-      const summary = String(suggestion.summary ?? "").trim();
-
-      if (summary && !transcript.summary) {
-        await db
-          .prepare("UPDATE transcripts SET summary = ? WHERE id = ?")
-          .bind(summary, transcript.id)
-          .run();
-      }
-
-      const existing = await db
-        .prepare(
-          "SELECT tags_json, warnings_json FROM transcript_metadata WHERE transcript_id = ?"
-        )
-        .bind(transcript.id)
-        .first<{ tags_json?: string | null; warnings_json?: string | null }>();
-
-      await db
-        .prepare(
-          `INSERT INTO transcript_metadata (transcript_id, fears_json, cast_json, themes_json, tags_json, locations_json, warnings_json)
-           VALUES (?, ?, ?, ?, ?, ?, ?)
-           ON CONFLICT(transcript_id) DO UPDATE SET
-             fears_json = excluded.fears_json,
-             cast_json = excluded.cast_json,
-             themes_json = excluded.themes_json,
-             tags_json = excluded.tags_json,
-             locations_json = excluded.locations_json,
-             warnings_json = excluded.warnings_json`
-        )
-        .bind(
-          transcript.id,
-          JSON.stringify(fears),
-          JSON.stringify(cast),
-          JSON.stringify(motifs),
-          existing?.tags_json ?? JSON.stringify([]),
-          JSON.stringify(locations),
-          existing?.warnings_json ?? JSON.stringify([])
-        )
-        .run();
+      await applyAiMetadataToTranscript(db, transcript);
     }
 
     revalidatePath("/admin/ingestion");
@@ -314,6 +330,73 @@ const batchAiSuggestAction = async (formData: FormData) => {
   }
 
   redirect(`/admin/ingestion?notice=${notice}`);
+};
+
+const batchAiSuggestAllAction = async (formData: FormData) => {
+  "use server";
+
+  const { userId } = await auth();
+  if (!userId) {
+    redirect("/login");
+  }
+
+  const db = requireDb();
+  const cursorValue = Number.parseInt(String(formData.get("ai_cursor") ?? "0"), 10);
+  const batchValue = Number.parseInt(String(formData.get("ai_all_batch") ?? "3"), 10);
+  const cursor = Number.isNaN(cursorValue) ? 0 : Math.max(0, cursorValue);
+  const batchSize = Number.isNaN(batchValue)
+    ? 3
+    : Math.max(1, Math.min(batchValue, 10));
+
+  const totalRow = await db
+    .prepare("SELECT COUNT(*) as total FROM transcripts")
+    .bind()
+    .first<{ total: number }>();
+  const total = totalRow?.total ?? 0;
+
+  if (total === 0) {
+    redirect("/admin/ingestion?notice=ai-all-done&ai_done=0&ai_total=0");
+  }
+
+  let done = cursor;
+  let notice = "ai-all-progress";
+
+  try {
+    const rows = await db
+      .prepare(
+        "SELECT id, title, summary, content FROM transcripts ORDER BY created_at DESC LIMIT ? OFFSET ?"
+      )
+      .bind(batchSize, cursor)
+      .all<AiTranscriptRow>();
+
+    const transcripts = rows.results;
+
+    for (const transcript of transcripts) {
+      await applyAiMetadataToTranscript(db, transcript);
+    }
+
+    done = cursor + transcripts.length;
+
+    if (done >= total || transcripts.length === 0) {
+      notice = "ai-all-done";
+    }
+  } catch (error) {
+    notice =
+      error instanceof Error && error.message.toLowerCase().includes("binding")
+        ? "ai-missing"
+        : "ai-failed";
+  }
+
+  revalidatePath("/admin/ingestion");
+  revalidatePath("/generate/step-1");
+
+  if (notice === "ai-all-progress") {
+    redirect(
+      `/admin/ingestion?notice=ai-all-progress&ai_done=${done}&ai_total=${total}&ai_cursor=${done}&ai_all_batch=${batchSize}`
+    );
+  }
+
+  redirect(`/admin/ingestion?notice=${notice}&ai_done=${done}&ai_total=${total}`);
 };
 
 const ingestTranscriptAction = async (formData: FormData) => {
@@ -416,7 +499,18 @@ export default async function IngestionPage({
   const notice = getFirstValue(resolvedSearchParams?.notice);
   const query = getFirstValue(resolvedSearchParams?.q)?.trim();
   const pageParam = getFirstValue(resolvedSearchParams?.page);
+  const aiDoneParam = getFirstValue(resolvedSearchParams?.ai_done);
+  const aiTotalParam = getFirstValue(resolvedSearchParams?.ai_total);
+  const aiCursorParam = getFirstValue(resolvedSearchParams?.ai_cursor);
+  const aiAllBatchParam = getFirstValue(resolvedSearchParams?.ai_all_batch);
   const pageNumber = Math.max(1, Number.parseInt(pageParam ?? "1", 10) || 1);
+  const aiDone = Math.max(0, Number.parseInt(aiDoneParam ?? "0", 10) || 0);
+  const aiTotal = Math.max(0, Number.parseInt(aiTotalParam ?? "0", 10) || 0);
+  const aiCursor = Math.max(0, Number.parseInt(aiCursorParam ?? "0", 10) || 0);
+  const aiAllBatch = Math.max(
+    1,
+    Math.min(10, Number.parseInt(aiAllBatchParam ?? "3", 10) || 3)
+  );
   const pageSize = 10;
   const offset = (pageNumber - 1) * pageSize;
 
@@ -518,6 +612,17 @@ export default async function IngestionPage({
             AI suggestions applied to selected transcripts. Review and edit.
           </p>
         ) : null}
+        {notice === "ai-all-progress" ? (
+          <p className="notice">
+            AI metadata generation in progress: {aiDone} / {aiTotal}. Keep this tab
+            open.
+          </p>
+        ) : null}
+        {notice === "ai-all-done" ? (
+          <p className="notice">
+            AI metadata generation completed: {aiDone} / {aiTotal}.
+          </p>
+        ) : null}
         {notice === "ai-missing" ? (
           <p className="notice">
             AI binding not configured. Add a Workers AI binding named
@@ -526,6 +631,12 @@ export default async function IngestionPage({
         ) : null}
         {notice === "ai-failed" ? (
           <p className="notice">AI batch tagging failed. Try again.</p>
+        ) : null}
+        {notice === "ai-all-progress" ? (
+          <AutoSubmitForm action={batchAiSuggestAllAction} enabled={true}>
+            <input type="hidden" name="ai_cursor" value={String(aiCursor)} />
+            <input type="hidden" name="ai_all_batch" value={String(aiAllBatch)} />
+          </AutoSubmitForm>
         ) : null}
         {!dbReady ? (
           <p className="notice">
@@ -785,6 +896,9 @@ export default async function IngestionPage({
               <button className="ghost" formAction={batchAiSuggestAction}>
                 Generate AI metadata (selected)
               </button>
+              <button className="ghost" formAction={batchAiSuggestAllAction}>
+                Generate AI metadata (all transcripts)
+              </button>
               <FormStatusIndicator label="Applying…" />
               <div className="inline-form">
                 <label className="form-label" htmlFor="ai_limit">
@@ -796,6 +910,18 @@ export default async function IngestionPage({
                   className="input"
                   defaultValue="5"
                 />
+              </div>
+              <div className="inline-form">
+                <label className="form-label" htmlFor="ai_all_batch">
+                  AI all-transcripts batch (max 10)
+                </label>
+                <input
+                  id="ai_all_batch"
+                  name="ai_all_batch"
+                  className="input"
+                  defaultValue="3"
+                />
+                <input type="hidden" name="ai_cursor" value="0" />
               </div>
             </div>
           </div>
