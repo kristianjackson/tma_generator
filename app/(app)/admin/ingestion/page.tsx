@@ -71,9 +71,16 @@ const parseJsonList = (value?: string | null) => {
   }
 };
 
-const formatJsonList = (value?: string | null) => {
+const formatJsonList = (value?: string | null, maxChars = 220) => {
   const items = parseJsonList(value);
-  return items.length > 0 ? items.join(", ") : "—";
+  if (items.length === 0) {
+    return "—";
+  }
+  const text = items.join(", ");
+  if (text.length <= maxChars) {
+    return text;
+  }
+  return `${text.slice(0, maxChars - 1).trimEnd()}…`;
 };
 
 const normalizeList = (value: unknown) => {
@@ -348,11 +355,11 @@ const batchAiSuggestAllAction = async (formData: FormData) => {
 
   const db = requireDb();
   const cursorValue = Number.parseInt(String(formData.get("ai_cursor") ?? "0"), 10);
-  const batchValue = Number.parseInt(String(formData.get("ai_all_batch") ?? "3"), 10);
+  const batchValue = Number.parseInt(String(formData.get("ai_all_batch") ?? "1"), 10);
   const cursor = Number.isNaN(cursorValue) ? 0 : Math.max(0, cursorValue);
   const batchSize = Number.isNaN(batchValue)
-    ? 3
-    : Math.max(1, Math.min(batchValue, 10));
+    ? 1
+    : Math.max(1, Math.min(batchValue, 5));
 
   const totalRow = await db
     .prepare("SELECT COUNT(*) as total FROM transcripts")
@@ -530,9 +537,10 @@ export default async function IngestionPage({
   const aiCursor = Math.max(0, Number.parseInt(aiCursorParam ?? "0", 10) || 0);
   const aiAllBatch = Math.max(
     1,
-    Math.min(10, Number.parseInt(aiAllBatchParam ?? "3", 10) || 3)
+    Math.min(5, Number.parseInt(aiAllBatchParam ?? "1", 10) || 1)
   );
   const aiFailed = Math.max(0, Number.parseInt(aiFailedParam ?? "0", 10) || 0);
+  const isAiAllProgress = notice === "ai-all-progress";
   const pageSize = 10;
   const offset = (pageNumber - 1) * pageSize;
 
@@ -540,48 +548,50 @@ export default async function IngestionPage({
   let dbReady = true;
   let totalCount = 0;
 
-  try {
-    const db = requireDb();
-    const conditions: string[] = [];
-    const params: unknown[] = [];
+  if (!isAiAllProgress) {
+    try {
+      const db = requireDb();
+      const conditions: string[] = [];
+      const params: unknown[] = [];
 
-    if (query) {
-      const like = `%${query}%`;
-      conditions.push("(t.title LIKE ? OR t.source LIKE ?)");
-      params.push(like, like);
+      if (query) {
+        const like = `%${query}%`;
+        conditions.push("(t.title LIKE ? OR t.source LIKE ?)");
+        params.push(like, like);
 
-      const numeric = Number.parseInt(query, 10);
-      if (!Number.isNaN(numeric)) {
-        conditions.push("(t.episode = ? OR t.season = ?)");
-        params.push(numeric, numeric);
+        const numeric = Number.parseInt(query, 10);
+        if (!Number.isNaN(numeric)) {
+          conditions.push("(t.episode = ? OR t.season = ?)");
+          params.push(numeric, numeric);
+        }
       }
+
+      const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" OR ")}` : "";
+      const result = await db
+        .prepare(
+          `SELECT t.id, t.title, t.season, t.episode, t.word_count, t.created_at, m.fears_json, m.cast_json, m.themes_json, m.locations_json, m.warnings_json
+           FROM transcripts t
+           LEFT JOIN transcript_metadata m ON t.id = m.transcript_id
+           ${whereClause}
+           ORDER BY t.created_at DESC
+           LIMIT ? OFFSET ?`
+        )
+        .bind(...params, pageSize, offset)
+        .all<TranscriptRow>();
+      transcripts = result.results;
+
+      const countResult = await db
+        .prepare(
+          `SELECT COUNT(*) as total
+           FROM transcripts t
+           ${whereClause}`
+        )
+        .bind(...params)
+        .first<{ total: number }>();
+      totalCount = countResult?.total ?? 0;
+    } catch {
+      dbReady = false;
     }
-
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" OR ")}` : "";
-    const result = await db
-      .prepare(
-        `SELECT t.id, t.title, t.season, t.episode, t.word_count, t.created_at, m.fears_json, m.cast_json, m.themes_json, m.locations_json, m.warnings_json
-         FROM transcripts t
-         LEFT JOIN transcript_metadata m ON t.id = m.transcript_id
-         ${whereClause}
-         ORDER BY t.created_at DESC
-         LIMIT ? OFFSET ?`
-      )
-      .bind(...params, pageSize, offset)
-      .all<TranscriptRow>();
-    transcripts = result.results;
-
-    const countResult = await db
-      .prepare(
-        `SELECT COUNT(*) as total
-         FROM transcripts t
-         ${whereClause}`
-      )
-      .bind(...params)
-      .first<{ total: number }>();
-    totalCount = countResult?.total ?? 0;
-  } catch {
-    dbReady = false;
   }
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
@@ -597,6 +607,47 @@ export default async function IngestionPage({
     const queryString = params.toString();
     return queryString ? `/admin/ingestion?${queryString}` : "/admin/ingestion";
   };
+
+  if (isAiAllProgress) {
+    return (
+      <main className="page">
+        <section className="hero hero-wide hero-ingestion">
+          <p className="eyebrow">Admin</p>
+          <div className="admin-header">
+            <h1>Transcript ingestion</h1>
+            <Link className="ghost link-button" href="/admin">
+              Back to admin
+            </Link>
+          </div>
+          <p className="subhead">
+            AI metadata generation in progress: {aiDone} / {aiTotal}. Failures so
+            far: {aiFailed}.
+          </p>
+          <AutoSubmitForm action={batchAiSuggestAllAction} enabled={true}>
+            <input type="hidden" name="ai_cursor" value={String(aiCursor)} />
+            <input type="hidden" name="ai_all_batch" value={String(aiAllBatch)} />
+          </AutoSubmitForm>
+          <div className="card">
+            <h2>Batch AI run</h2>
+            <p className="subhead">
+              This lightweight progress view avoids rendering the full ingestion table
+              between batches.
+            </p>
+            <form className="actions" action={batchAiSuggestAllAction}>
+              <input type="hidden" name="ai_cursor" value={String(aiCursor)} />
+              <input type="hidden" name="ai_all_batch" value={String(aiAllBatch)} />
+              <button className="ghost" type="submit">
+                Process next batch now
+              </button>
+              <Link className="ghost link-button" href="/admin/ingestion">
+                Pause and return to ingestion
+              </Link>
+            </form>
+          </div>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className="page">
@@ -947,13 +998,13 @@ export default async function IngestionPage({
               </div>
               <div className="inline-form">
                 <label className="form-label" htmlFor="ai_all_batch">
-                  AI all-transcripts batch (max 10)
+                  AI all-transcripts batch (max 5)
                 </label>
                 <input
                   id="ai_all_batch"
                   name="ai_all_batch"
                   className="input"
-                  defaultValue="3"
+                  defaultValue="1"
                 />
                 <input type="hidden" name="ai_cursor" value="0" />
               </div>
