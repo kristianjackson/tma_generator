@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireDb } from "@/app/lib/db";
 import { getRunDisplayName } from "@/app/lib/run-utils";
+import { formatRunStatus, getContinueRoute } from "@/app/lib/run-status";
 
 type RunRow = {
   id: string;
@@ -111,12 +112,18 @@ export default async function RunsPage({
                 {runs.map((run) => (
                   <tr key={run.id}>
                     <td>{getRunDisplayName(run.title, run.seed)}</td>
-                    <td>{run.status}</td>
+                    <td>{formatRunStatus(run.status)}</td>
                     <td>{run.final_count > 0 ? "Finalized" : "—"}</td>
                     <td>{new Date(run.updated_at).toLocaleDateString("en-US")}</td>
                     <td>
                       <Link className="ghost link-button" href={`/runs/${run.id}`}>
                         View
+                      </Link>
+                      <Link
+                        className="ghost link-button"
+                        href={getContinueRoute(run.id, run.status)}
+                      >
+                        Continue
                       </Link>
                       <form className="inline-form" action={deleteRunAction}>
                         <input type="hidden" name="runId" value={run.id} />

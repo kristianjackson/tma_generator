@@ -7,6 +7,7 @@ import ExportActions from "@/app/components/ExportActions";
 import { getRunDisplayName } from "@/app/lib/run-utils";
 import { getRunDailyLimit } from "@/app/lib/limits";
 import { formatTierLabel } from "@/app/lib/tiers";
+import { formatRunStatus, getContinueRoute } from "@/app/lib/run-status";
 
 type RunRow = {
   id: string;
@@ -111,12 +112,24 @@ const restoreVersionAction = async (formData: FormData) => {
     )
     .run();
 
-  await db
-    .prepare("UPDATE story_runs SET updated_at = ? WHERE id = ?")
-    .bind(Date.now(), runId)
-    .run();
+  const nextStatus =
+    version.version_type === "outline"
+      ? "outlined"
+      : version.version_type === "draft"
+        ? "drafted"
+        : version.version_type === "final"
+          ? "final"
+          : null;
+
+  if (nextStatus) {
+    await db
+      .prepare("UPDATE story_runs SET status = ?, updated_at = ? WHERE id = ?")
+      .bind(nextStatus, Date.now(), runId)
+      .run();
+  }
 
   revalidatePath(`/runs/${runId}`);
+  revalidatePath("/runs");
   redirect(`/runs/${runId}`);
 };
 
@@ -193,6 +206,23 @@ export default async function RunDetailPage({
           </Link>
         </div>
         <p className="subhead">Seed: {run.seed}</p>
+        <div className="card">
+          <h2>Progress</h2>
+          <div className="detail-grid">
+            <div>
+              <h3>Status</h3>
+              <p className="subhead">{formatRunStatus(run.status)}</p>
+            </div>
+          </div>
+          <div className="actions">
+            <Link
+              className="primary link-button"
+              href={getContinueRoute(run.id, run.status)}
+            >
+              Continue from current stage
+            </Link>
+          </div>
+        </div>
         {finalVersion ? (
           <p className="notice">
             Final version saved on{" "}
