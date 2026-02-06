@@ -16,6 +16,7 @@ type SearchParams = {
   ai_total?: string | string[];
   ai_cursor?: string | string[];
   ai_all_batch?: string | string[];
+  ai_failed?: string | string[];
 };
 
 type TranscriptRow = {
@@ -296,40 +297,45 @@ const batchAiSuggestAction = async (formData: FormData) => {
   const db = requireDb();
   const toProcess = selectedIds.slice(0, effectiveLimit);
 
-  let notice = "ai-batch";
+  let applied = 0;
+  let failed = 0;
+  let bindingMissing = false;
 
-  try {
-    for (const id of toProcess) {
-      const transcript = await db
-        .prepare("SELECT id, title, summary, content FROM transcripts WHERE id = ?")
-        .bind(id)
-        .first<AiTranscriptRow>();
+  for (const id of toProcess) {
+    const transcript = await db
+      .prepare("SELECT id, title, summary, content FROM transcripts WHERE id = ?")
+      .bind(id)
+      .first<AiTranscriptRow>();
 
-      if (!transcript) {
-        continue;
-      }
+    if (!transcript) {
+      continue;
+    }
 
+    try {
       await applyAiMetadataToTranscript(db, transcript);
+      applied += 1;
+    } catch (error) {
+      if (error instanceof Error && error.message.toLowerCase().includes("binding")) {
+        bindingMissing = true;
+        break;
+      }
+      failed += 1;
     }
-
-    revalidatePath("/admin/ingestion");
-    revalidatePath("/generate/step-1");
-  } catch (error) {
-    if (
-      error &&
-      typeof error === "object" &&
-      "digest" in error &&
-      String((error as { digest?: string }).digest).includes("NEXT_REDIRECT")
-    ) {
-      throw error;
-    }
-    notice =
-      error instanceof Error && error.message.toLowerCase().includes("binding")
-        ? "ai-missing"
-        : "ai-failed";
   }
 
-  redirect(`/admin/ingestion?notice=${notice}`);
+  let notice = "ai-batch";
+  if (bindingMissing) {
+    notice = "ai-missing";
+  } else if (applied > 0 && failed > 0) {
+    notice = "ai-partial";
+  } else if (applied === 0 && failed > 0) {
+    notice = "ai-failed";
+  }
+
+  revalidatePath("/admin/ingestion");
+  revalidatePath("/generate/step-1");
+
+  redirect(`/admin/ingestion?notice=${notice}&ai_done=${applied}&ai_failed=${failed}`);
 };
 
 const batchAiSuggestAllAction = async (formData: FormData) => {
@@ -359,6 +365,8 @@ const batchAiSuggestAllAction = async (formData: FormData) => {
   }
 
   let done = cursor;
+  let failed = 0;
+  let bindingMissing = false;
   let notice = "ai-all-progress";
 
   try {
@@ -372,13 +380,23 @@ const batchAiSuggestAllAction = async (formData: FormData) => {
     const transcripts = rows.results;
 
     for (const transcript of transcripts) {
-      await applyAiMetadataToTranscript(db, transcript);
+      try {
+        await applyAiMetadataToTranscript(db, transcript);
+      } catch (error) {
+        if (error instanceof Error && error.message.toLowerCase().includes("binding")) {
+          bindingMissing = true;
+          break;
+        }
+        failed += 1;
+      }
     }
 
     done = cursor + transcripts.length;
 
-    if (done >= total || transcripts.length === 0) {
-      notice = "ai-all-done";
+    if (bindingMissing) {
+      notice = "ai-missing";
+    } else if (done >= total || transcripts.length === 0) {
+      notice = failed > 0 ? "ai-all-partial" : "ai-all-done";
     }
   } catch (error) {
     notice =
@@ -392,11 +410,13 @@ const batchAiSuggestAllAction = async (formData: FormData) => {
 
   if (notice === "ai-all-progress") {
     redirect(
-      `/admin/ingestion?notice=ai-all-progress&ai_done=${done}&ai_total=${total}&ai_cursor=${done}&ai_all_batch=${batchSize}`
+      `/admin/ingestion?notice=ai-all-progress&ai_done=${done}&ai_total=${total}&ai_cursor=${done}&ai_all_batch=${batchSize}&ai_failed=${failed}`
     );
   }
 
-  redirect(`/admin/ingestion?notice=${notice}&ai_done=${done}&ai_total=${total}`);
+  redirect(
+    `/admin/ingestion?notice=${notice}&ai_done=${done}&ai_total=${total}&ai_failed=${failed}`
+  );
 };
 
 const ingestTranscriptAction = async (formData: FormData) => {
@@ -503,6 +523,7 @@ export default async function IngestionPage({
   const aiTotalParam = getFirstValue(resolvedSearchParams?.ai_total);
   const aiCursorParam = getFirstValue(resolvedSearchParams?.ai_cursor);
   const aiAllBatchParam = getFirstValue(resolvedSearchParams?.ai_all_batch);
+  const aiFailedParam = getFirstValue(resolvedSearchParams?.ai_failed);
   const pageNumber = Math.max(1, Number.parseInt(pageParam ?? "1", 10) || 1);
   const aiDone = Math.max(0, Number.parseInt(aiDoneParam ?? "0", 10) || 0);
   const aiTotal = Math.max(0, Number.parseInt(aiTotalParam ?? "0", 10) || 0);
@@ -511,6 +532,7 @@ export default async function IngestionPage({
     1,
     Math.min(10, Number.parseInt(aiAllBatchParam ?? "3", 10) || 3)
   );
+  const aiFailed = Math.max(0, Number.parseInt(aiFailedParam ?? "0", 10) || 0);
   const pageSize = 10;
   const offset = (pageNumber - 1) * pageSize;
 
@@ -621,6 +643,18 @@ export default async function IngestionPage({
         {notice === "ai-all-done" ? (
           <p className="notice">
             AI metadata generation completed: {aiDone} / {aiTotal}.
+          </p>
+        ) : null}
+        {notice === "ai-all-partial" ? (
+          <p className="notice">
+            AI metadata generation completed with issues: {aiDone} / {aiTotal}
+            processed, {aiFailed} failed.
+          </p>
+        ) : null}
+        {notice === "ai-partial" ? (
+          <p className="notice">
+            AI suggestions applied with partial failures: {aiDone} updated, {aiFailed}
+            failed.
           </p>
         ) : null}
         {notice === "ai-missing" ? (
