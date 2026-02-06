@@ -238,12 +238,23 @@ const extractWarningsFromLine = (line) => {
   return trimmed;
 };
 
+const isWarningEndMarker = (line) =>
+  /^The Magnus Archives Theme/i.test(line) ||
+  /^JONATHAN SIMS$/i.test(line) ||
+  /^Rusty Quill Presents/i.test(line) ||
+  /^Statement of /i.test(line);
+
+const isLikelyWarningLine = (line) =>
+  /^[-•–—\s\u2212]/.test(line) ||
+  /^(Discussions of|Mentions of|SFX|CW)\s*:/i.test(line);
+
 const cleanTranscriptText = (rawText) => {
   const lines = rawText.split(/\r?\n/);
   const cleaned = [];
   const warnings = [];
   let inWarnings = false;
   let inOutro = false;
+  let warningCount = 0;
 
   for (const line of lines) {
     const sanitizedLine = stripInvisible(line).replace(/\f/g, "");
@@ -260,27 +271,29 @@ const cleanTranscriptText = (rawText) => {
 
     if (/^Content Warnings$/i.test(trimmed)) {
       inWarnings = true;
+      warningCount = 0;
       continue;
     }
 
     if (inWarnings) {
       if (!trimmed) {
-        inWarnings = false;
         continue;
       }
 
-      if (
-        /^The Magnus Archives Theme/i.test(trimmed) ||
-        /^JONATHAN SIMS$/i.test(trimmed) ||
-        /^Rusty Quill Presents/i.test(trimmed)
-      ) {
+      if (isWarningEndMarker(trimmed)) {
+        inWarnings = false;
+        // fall through to normal handling for this line
+      } else if (isLikelyWarningLine(trimmed)) {
+        const warning = extractWarningsFromLine(sanitizedLine);
+        if (warning && !/^[\W_]+$/.test(warning)) {
+          warnings.push(warning);
+          warningCount += 1;
+        }
+        continue;
+      } else if (warningCount > 0) {
         inWarnings = false;
         // fall through to normal handling for this line
       } else {
-        const warning = extractWarningsFromLine(sanitizedLine);
-        if (warning) {
-          warnings.push(warning);
-        }
         continue;
       }
     }
