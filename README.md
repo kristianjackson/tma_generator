@@ -121,13 +121,16 @@ npm run preview
 npm run deploy
 ```
 
+The deploy script includes retries for transient Cloudflare API failures during
+asset upload (for example error code `10013`).
+
 ### Deploy (Workers Builds)
 
 1. Create a Workers project and connect this repo.
 2. Ensure the Worker name in the Cloudflare dashboard matches the `name` in
    `wrangler.jsonc`.
 3. Set the build command to `npx @opennextjs/cloudflare build`.
-4. Set the deploy command to `npx @opennextjs/cloudflare deploy`.
+4. Set the deploy command to `sh scripts/deploy-with-retry.sh`.
 5. (Optional) Set the non-production deploy command to
    `npx @opennextjs/cloudflare upload` for preview builds.
 6. Add build-time secrets for Clerk in Build configuration (build variables and
@@ -136,7 +139,7 @@ npm run deploy
 ### Workers Builds checklist
 
 - Build command: `npx @opennextjs/cloudflare build`
-- Deploy command: `npx @opennextjs/cloudflare deploy`
+- Deploy command: `sh scripts/deploy-with-retry.sh`
 - Preview command (optional): `npx @opennextjs/cloudflare upload`
 - Secrets in Build configuration and Settings > Variables & Secrets
 - Worker name matches `wrangler.jsonc`
@@ -150,7 +153,10 @@ npm run deploy
   Settings > Variables & Secrets, then redeploy.
 - Build fails with `.open-next/worker.js` not found: the build command did not
   run. Ensure the build command is `npx @opennextjs/cloudflare build` and the
-  deploy command is `npx @opennextjs/cloudflare deploy`.
+  deploy command is `sh scripts/deploy-with-retry.sh`.
+- Deploy fails while uploading assets with API error `10013`: use
+  `sh scripts/deploy-with-retry.sh` as the deploy command. It retries
+  automatically with exponential backoff.
 - Build fails with “routes not configured to run with the Edge Runtime”: that
   means you are using Pages or `next-on-pages`. This repo targets Workers via
   OpenNext and does not use Edge runtime.
