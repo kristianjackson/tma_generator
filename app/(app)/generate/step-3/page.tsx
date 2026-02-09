@@ -13,6 +13,7 @@ import { getRunDisplayName } from "@/app/lib/run-utils";
 type SearchParams = {
   run?: string | string[];
   notice?: string | string[];
+  error?: string | string[];
 };
 
 type RunRow = {
@@ -107,11 +108,27 @@ const generateDraftAction = async (formData: FormData) => {
     revalidatePath("/generate/step-3");
     redirect(`/generate/step-3?run=${runId}`);
   } catch (error) {
-    const notice =
-      error instanceof Error && error.message.toLowerCase().includes("binding")
-        ? "ai-missing"
+    const message = error instanceof Error ? error.message : "Unknown AI error";
+    const normalizedMessage = message.toLowerCase();
+    const notice = normalizedMessage.includes("binding")
+      ? "ai-missing"
+      : normalizedMessage.includes("token") ||
+          normalizedMessage.includes("context") ||
+          normalizedMessage.includes("too long") ||
+          normalizedMessage.includes("length")
+        ? "ai-too-long"
         : "ai-failed";
-    redirect(`/generate/step-3?run=${runId}&notice=${notice}`);
+    console.error("draft_generation_failed", { runId, message });
+    await db
+      .prepare("UPDATE story_runs SET status = ?, updated_at = ? WHERE id = ?")
+      .bind("outlined", Date.now(), runId)
+      .run();
+    const params = new URLSearchParams({
+      run: runId,
+      notice,
+      error: message.slice(0, 220)
+    });
+    redirect(`/generate/step-3?${params.toString()}`);
   }
 };
 
@@ -202,6 +219,7 @@ export default async function GenerateStepThreePage({
   const resolvedSearchParams = await searchParams;
   const runId = getFirstValue(resolvedSearchParams?.run);
   const notice = getFirstValue(resolvedSearchParams?.notice);
+  const errorMessage = getFirstValue(resolvedSearchParams?.error);
 
   if (!runId) {
     return (
@@ -280,6 +298,17 @@ export default async function GenerateStepThreePage({
         ) : null}
         {notice === "ai-failed" ? (
           <p className="notice">AI draft generation failed. Try again.</p>
+        ) : null}
+        {notice === "ai-too-long" ? (
+          <p className="notice">
+            AI draft request exceeded model limits. Try reducing outline length or
+            filters.
+          </p>
+        ) : null}
+        {errorMessage ? (
+          <p className="notice">
+            Error detail: <code>{errorMessage}</code>
+          </p>
         ) : null}
         {shouldAutoGenerate ? (
           <div className="notice notice-loading">

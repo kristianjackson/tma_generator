@@ -13,6 +13,41 @@ type AiSuggestion = {
   locations?: string[];
 };
 
+const truncateForSize = (content: string, maxChars: number) => {
+  if (content.length <= maxChars) {
+    return content;
+  }
+
+  const head = content.slice(0, Math.floor(maxChars * 0.7));
+  const tail = content.slice(-Math.floor(maxChars * 0.3));
+  return `${head}\n\n[...]\n\n${tail}`;
+};
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const isContextLimitError = (message: string) => {
+  const normalized = message.toLowerCase();
+  return [
+    "maximum context length",
+    "context window",
+    "token limit",
+    "too many tokens",
+    "prompt too long",
+    "input too long"
+  ].some((needle) => normalized.includes(needle));
+};
+
+const isTransientAiError = (message: string) => {
+  const normalized = message.toLowerCase();
+  return [
+    "rate limit",
+    "temporarily unavailable",
+    "overloaded",
+    "try again",
+    "internal error"
+  ].some((needle) => normalized.includes(needle));
+};
+
 const getAiBinding = () => {
   try {
     const context = getCloudflareContext();
@@ -44,14 +79,43 @@ const runAiChat = async (
   }
 
   const model = getAiModel();
-  const result = await ai.run(model, {
+  const maxTokens =
+    typeof options.max_tokens === "number" ? options.max_tokens : 1400;
+  const baseOptions = {
     messages,
     temperature: 0.7,
-    max_tokens: 1400,
+    max_tokens: maxTokens,
     ...options
-  });
+  };
 
-  return extractText(result);
+  try {
+    const result = await ai.run(model, baseOptions);
+    return extractText(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error ?? "");
+
+    if (isContextLimitError(message)) {
+      const reducedMessages = messages.map((entry) =>
+        entry.role === "user"
+          ? { ...entry, content: truncateForSize(entry.content, 12000) }
+          : entry
+      );
+      const result = await ai.run(model, {
+        ...baseOptions,
+        messages: reducedMessages,
+        max_tokens: Math.min(maxTokens, 1200)
+      });
+      return extractText(result);
+    }
+
+    if (isTransientAiError(message)) {
+      await sleep(300);
+      const result = await ai.run(model, baseOptions);
+      return extractText(result);
+    }
+
+    throw error;
+  }
 };
 
 const extractText = (result: unknown) => {
@@ -166,13 +230,7 @@ const cleanSummary = (summary?: string) => {
 };
 
 const truncateTranscript = (content: string, maxChars = 12000) => {
-  if (content.length <= maxChars) {
-    return content;
-  }
-
-  const head = content.slice(0, Math.floor(maxChars * 0.7));
-  const tail = content.slice(-Math.floor(maxChars * 0.3));
-  return `${head}\n\n[...]\n\n${tail}`;
+  return truncateForSize(content, maxChars);
 };
 
 export const suggestMetadata = async (title: string, content: string) => {
@@ -350,7 +408,10 @@ Write in the voice of a formal statement and archival notes.`;
         role: "user",
         content: `Seed:\n${input.seed}\n\nFilters:\n${
           filterNotes || "none"
-        }\n\n${notesBlock ? `${notesBlock}\n\n` : ""}Outline:\n${input.outline}\n\nTranscript excerpts:\n${input.context}`
+        }\n\n${notesBlock ? `${notesBlock}\n\n` : ""}Outline:\n${truncateForSize(
+          input.outline,
+          7000
+        )}\n\nTranscript excerpts:\n${truncateForSize(input.context, 9000)}`
       }
     ],
     { max_tokens: 2000 }
