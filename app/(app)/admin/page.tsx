@@ -671,6 +671,24 @@ export default async function AdminUsersPage({
           <span className="page-count">
             Page {page} of {totalPages}
           </span>
+          <form className="pagination-jump" action="/admin" method="get">
+            {query ? <input type="hidden" name="q" value={query} /> : null}
+            <label className="sr-only" htmlFor="admin-page-jump">
+              Go to page
+            </label>
+            <input
+              id="admin-page-jump"
+              className="pagination-jump-input"
+              type="number"
+              name="page"
+              min={1}
+              max={totalPages}
+              defaultValue={page}
+            />
+            <button className="ghost small-button" type="submit">
+              Go
+            </button>
+          </form>
           <Link
             className="ghost link-button"
             href={`/admin?page=${Math.min(totalPages, page + 1)}&q=${encodeURIComponent(

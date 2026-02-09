@@ -926,6 +926,28 @@ export default async function IngestionPage({
                     Next
                   </Link>
                 ) : null}
+                <form
+                  className="pagination-jump"
+                  action="/admin/ingestion"
+                  method="get"
+                >
+                  {query ? <input type="hidden" name="q" value={query} /> : null}
+                  <label className="sr-only" htmlFor="ingestion-page-jump">
+                    Go to page
+                  </label>
+                  <input
+                    id="ingestion-page-jump"
+                    className="pagination-jump-input"
+                    type="number"
+                    name="page"
+                    min={1}
+                    max={totalPages}
+                    defaultValue={pageNumber}
+                  />
+                  <button className="ghost small-button" type="submit">
+                    Go
+                  </button>
+                </form>
               </div>
             </div>
           ) : null}

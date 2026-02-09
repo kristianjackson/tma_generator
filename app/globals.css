@@ -625,6 +625,21 @@ button {
   font-weight: 600;
 }
 
+.pagination-jump {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pagination-jump-input {
+  width: 84px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 14px;
+  line-height: 1.2;
+}
+
 .inline-form {
   display: inline;
 }
