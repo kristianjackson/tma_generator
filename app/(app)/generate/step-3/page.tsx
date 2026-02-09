@@ -405,14 +405,26 @@ export default async function GenerateStepThreePage({
             <button className="primary" type="submit">
               Save draft
             </button>
-            <Link className="ghost link-button" href={`/generate/review?run=${runId}`}>
-              Review & edit
-            </Link>
-            <Link className="ghost link-button" href="/runs">
-              View history
-            </Link>
           </div>
         </form>
+        <div className="actions">
+          <form className="inline-form" action={generateDraftAction}>
+            <input type="hidden" name="runId" value={runId} />
+            <SubmitButton
+              className="primary"
+              idleText={
+                hasDraft ? "Regenerate full story draft" : "Generate full story draft"
+              }
+              pendingText="Generating..."
+            />
+          </form>
+          <Link className="ghost link-button" href={`/generate/review?run=${runId}`}>
+            Review & edit
+          </Link>
+          <Link className="ghost link-button" href="/runs">
+            View history
+          </Link>
+        </div>
         {draft ? (
           <ExportActions
             label="Export draft"
