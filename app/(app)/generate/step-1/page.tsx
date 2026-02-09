@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { auth } from "@clerk/nextjs/server";
+import { auth, clerkClient } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireDb } from "@/app/lib/db";
 import { getTranscriptFilters } from "@/app/lib/transcripts";
+import { isUserAdmin } from "@/app/lib/user-utils";
 import {
   formatDailyLimit,
   getRunDailyLimit,
@@ -48,18 +49,29 @@ const createRunAction = async (formData: FormData) => {
   const now = Date.now();
   const db = requireDb();
 
-  const { limit } = await getRunDailyLimit(userId);
-  const windowStart = getWindowStart(now);
-  const usageRow = await db
-    .prepare(
-      "SELECT COUNT(*) as total FROM story_runs WHERE user_id = ? AND created_at >= ?"
-    )
-    .bind(userId, windowStart)
-    .first<{ total: number }>();
-  const usageCount = usageRow?.total ?? 0;
+  let adminExempt = false;
+  try {
+    const client = await clerkClient();
+    const user = await client.users.getUser(userId);
+    adminExempt = isUserAdmin(user);
+  } catch {
+    adminExempt = false;
+  }
 
-  if (isLimitReached(usageCount, limit)) {
-    redirect(`/generate/step-1?notice=limit&limit=${limit}`);
+  if (!adminExempt) {
+    const { limit } = await getRunDailyLimit(userId);
+    const windowStart = getWindowStart(now);
+    const usageRow = await db
+      .prepare(
+        "SELECT COUNT(*) as total FROM story_runs WHERE user_id = ? AND created_at >= ?"
+      )
+      .bind(userId, windowStart)
+      .first<{ total: number }>();
+    const usageCount = usageRow?.total ?? 0;
+
+    if (isLimitReached(usageCount, limit)) {
+      redirect(`/generate/step-1?notice=limit&limit=${limit}`);
+    }
   }
 
   await db
@@ -103,6 +115,18 @@ export default async function GenerateStepOnePage({
   const limit = Number.parseInt(limitParam ?? "", 10);
   const fallbackLimitInfo = await getRunDailyLimit(undefined);
   const dailyLimit = Number.isNaN(limit) ? fallbackLimitInfo.limit : limit;
+  const { userId } = await auth();
+
+  let adminExempt = false;
+  if (userId) {
+    try {
+      const client = await clerkClient();
+      const user = await client.users.getUser(userId);
+      adminExempt = isUserAdmin(user);
+    } catch {
+      adminExempt = false;
+    }
+  }
 
   let filters;
   let dbReady = true;
@@ -111,7 +135,6 @@ export default async function GenerateStepOnePage({
 
   try {
     filters = await getTranscriptFilters();
-    const { userId } = await auth();
     if (userId) {
       const db = requireDb();
       const windowStart = getWindowStart();
@@ -123,7 +146,9 @@ export default async function GenerateStepOnePage({
         .first<{ total: number }>();
       usageCount = usageRow?.total ?? 0;
       const limitInfo = await getRunDailyLimit(userId);
-      limitLabel = formatDailyLimit(limitInfo.limit);
+      limitLabel = adminExempt
+        ? "Unlimited (admin exempt)"
+        : formatDailyLimit(limitInfo.limit);
     }
   } catch {
     dbReady = false;
@@ -152,7 +177,7 @@ export default async function GenerateStepOnePage({
         {notice === "missing" ? (
           <p className="notice">Please add a seed before continuing.</p>
         ) : null}
-        {notice === "limit" ? (
+        {notice === "limit" && !adminExempt ? (
           <p className="notice">
             You have reached the daily run limit ({formatDailyLimit(dailyLimit)}). Try
             again tomorrow.
