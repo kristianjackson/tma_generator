@@ -152,10 +152,8 @@ export const buildTranscriptContext = async (seed: string, filters: Filters) => 
     return { ...item, score };
   });
 
-  const selectedTranscripts = scored
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 6)
-    .map((item) => item.row);
+  const selectedCandidates = scored.sort((a, b) => b.score - a.score).slice(0, 6);
+  const selectedTranscripts = selectedCandidates.map((item) => item.row);
 
   if (selectedTranscripts.length === 0) {
     return {
@@ -164,8 +162,9 @@ export const buildTranscriptContext = async (seed: string, filters: Filters) => 
     };
   }
 
-  const transcriptMap = new Map(
-    selectedTranscripts.map((row) => [row.id, row])
+  const transcriptMap = new Map(selectedTranscripts.map((row) => [row.id, row]));
+  const candidateMap = new Map(
+    selectedCandidates.map((candidate) => [candidate.row.id, candidate])
   );
   const placeholders = selectedTranscripts.map(() => "?").join(", ");
   const chunkResult = await db
@@ -183,14 +182,59 @@ export const buildTranscriptContext = async (seed: string, filters: Filters) => 
     .sort((a, b) => b.score - a.score)
     .slice(0, 12);
 
+  const maxChunkScore = scoredChunks.reduce(
+    (max, entry) => Math.max(max, entry.score),
+    0
+  );
+
+  if (maxChunkScore === 0) {
+    const styleReferences = selectedCandidates.map((candidate, index) => {
+      const label = formatSourceLabel(candidate.row);
+      const summary =
+        candidate.row.summary?.trim() || "No summary available for this transcript.";
+      const fears =
+        candidate.fears.length > 0 ? candidate.fears.join(", ") : "unspecified";
+      const motifs =
+        candidate.motifs.length > 0 ? candidate.motifs.join(", ") : "unspecified";
+      return [
+        `[${index + 1}] ${label}`,
+        `Summary: ${summary}`,
+        `Fears: ${fears}`,
+        `Motifs: ${motifs}`
+      ].join("\n");
+    });
+
+    const context = [
+      "Style references (for tone and pacing only; do not copy names, entities, locations, or plot beats):",
+      styleReferences.join("\n\n")
+    ].join("\n\n");
+
+    return {
+      context,
+      sources: styleReferences
+    };
+  }
+
   const sources = scoredChunks.map((entry, index) => {
     const row = transcriptMap.get(entry.chunk.transcript_id);
     const label = row ? formatSourceLabel(row) : "Unknown source";
-    return `[${index + 1}] ${label}\n${entry.chunk.content}`;
+    const metadata = candidateMap.get(entry.chunk.transcript_id);
+    const fears =
+      metadata && metadata.fears.length > 0
+        ? metadata.fears.join(", ")
+        : "unspecified";
+    return [
+      `[${index + 1}] ${label}`,
+      `Fears: ${fears}`,
+      entry.chunk.content
+    ].join("\n");
   });
 
   return {
-    context: sources.join("\n\n"),
+    context: [
+      "Reference excerpts (style only; do not copy names, entities, locations, or plot beats):",
+      sources.join("\n\n")
+    ].join("\n\n"),
     sources
   };
 };

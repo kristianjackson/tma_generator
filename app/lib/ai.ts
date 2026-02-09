@@ -158,6 +158,11 @@ const extractJson = (text: string): AiSuggestion | null => {
   }
 };
 
+const allowsCanonCarryover = (seed: string, notes?: string) =>
+  /(continue|continuation|sequel|follow[- ]?up|same story|same episode|pick up where)/i.test(
+    `${seed}\n${notes ?? ""}`
+  );
+
 const FEAR_CANONICAL = [
   "The Beholding",
   "The Buried",
@@ -283,6 +288,8 @@ export const generateOutline = async (input: {
     brief?: string | null;
   };
 
+  const canonCarryoverAllowed = allowsCanonCarryover(input.seed, input.notes);
+
   const toneMap: Record<string, string> = {
     classic: "Classic TMA: archival, understated, formal statement voice.",
     modern: "Modern horror: sharper pacing, cinematic clarity, restrained dialogue.",
@@ -313,6 +320,13 @@ Use the provided transcript excerpts for tone and structure.
 Tone: ${toneNote}
 Length guidance: ${lengthNote}
 Cast guidance: ${castNote}
+Premise lock: the seed idea is mandatory and must drive the episode conflict.
+Originality rule: keep this story novel. Do not reuse canon episode plots or copy transcript events.
+Canon rule: ${
+    canonCarryoverAllowed
+      ? "Canon callbacks are allowed only when explicitly requested by the seed/notes."
+      : "Do not use canon character names, entity names, locations, artifacts, or direct callbacks from provided excerpts."
+  }
 Return a clear numbered outline with 5-7 sections, each with 2-4 bullet points.
 Avoid meta commentary.`;
 
@@ -335,7 +349,12 @@ Avoid meta commentary.`;
         role: "user",
         content: `Seed:\n${input.seed}\n\nFilters:\n${
           filterNotes || "none"
-        }\n\n${notesBlock ? `${notesBlock}\n\n` : ""}Transcript excerpts:\n${input.context}`
+        }\n\n${notesBlock ? `${notesBlock}\n\n` : ""}Non-negotiable constraints:
+- Build around the seed premise directly.
+- Use transcript context for style only, never as plot source material.
+- Keep events, entities, and names original unless continuation is explicitly requested.
+
+Transcript references:\n${input.context}`
       }
     ],
     { max_tokens: 900 }
@@ -349,6 +368,8 @@ export const generateDraft = async (input: {
   context: string;
   notes?: string;
 }) => {
+  const canonCarryoverAllowed = allowsCanonCarryover(input.seed, input.notes);
+
   const filters = input.filters as {
     tone?: string;
     length?: string;
@@ -387,6 +408,13 @@ Use the outline and transcript excerpts for tone, pacing, and voice.
 Tone: ${toneNote}
 Length guidance: ${lengthNote}
 Cast guidance: ${castNote}
+Premise lock: the seed premise and the provided outline are mandatory.
+Originality rule: keep this story novel. Do not copy plot beats, scenes, entities, or phrasing from transcript references.
+Canon rule: ${
+    canonCarryoverAllowed
+      ? "Canon callbacks are allowed only where explicitly requested by the seed/notes."
+      : "Do not use canon character names, entity names, locations, artifacts, or direct callbacks from provided excerpts."
+  }
 Write in the voice of a formal statement and archival notes.`;
 
   const filterNotes = Object.entries(input.filters)
@@ -411,7 +439,12 @@ Write in the voice of a formal statement and archival notes.`;
         }\n\n${notesBlock ? `${notesBlock}\n\n` : ""}Outline:\n${truncateForSize(
           input.outline,
           7000
-        )}\n\nTranscript excerpts:\n${truncateForSize(input.context, 9000)}`
+        )}\n\nNon-negotiable constraints:
+- Keep the seed premise central to every major section.
+- Use transcript references for style only, never as a source of plot or names.
+- Keep events, entities, and names original unless continuation is explicitly requested.
+
+Transcript references:\n${truncateForSize(input.context, 9000)}`
       }
     ],
     { max_tokens: 2000 }
