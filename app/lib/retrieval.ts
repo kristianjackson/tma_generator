@@ -158,7 +158,8 @@ export const buildTranscriptContext = async (seed: string, filters: Filters) => 
   if (selectedTranscripts.length === 0) {
     return {
       context: "",
-      sources: [] as string[]
+      sources: [] as string[],
+      forbiddenTerms: [] as string[]
     };
   }
 
@@ -187,31 +188,51 @@ export const buildTranscriptContext = async (seed: string, filters: Filters) => 
     0
   );
 
+  const forbiddenTerms = Array.from(
+    new Set(
+      selectedCandidates
+        .flatMap((candidate) => [
+          ...candidate.cast,
+          candidate.row.title,
+          ...(candidate.row.summary ? [candidate.row.summary] : [])
+        ])
+        .flatMap((value) =>
+          value
+            .split(/[,\n]/)
+            .map((item) => item.trim())
+            .filter((item) => item.length > 2 && item.length < 80)
+        )
+    )
+  ).slice(0, 80);
+
   if (maxChunkScore === 0) {
     const styleReferences = selectedCandidates.map((candidate, index) => {
-      const label = formatSourceLabel(candidate.row);
-      const summary =
-        candidate.row.summary?.trim() || "No summary available for this transcript.";
       const fears =
         candidate.fears.length > 0 ? candidate.fears.join(", ") : "unspecified";
       const motifs =
         candidate.motifs.length > 0 ? candidate.motifs.join(", ") : "unspecified";
+      const warnings =
+        candidate.warnings.length > 0
+          ? candidate.warnings.join(", ")
+          : "unspecified";
       return [
-        `[${index + 1}] ${label}`,
-        `Summary: ${summary}`,
+        `[${index + 1}]`,
         `Fears: ${fears}`,
-        `Motifs: ${motifs}`
+        `Motifs: ${motifs}`,
+        `Content warnings: ${warnings}`
       ].join("\n");
     });
 
     const context = [
-      "Style references (for tone and pacing only; do not copy names, entities, locations, or plot beats):",
+      "Style references from corpus metadata (for tone and pacing only).",
+      "Do not copy names, entities, locations, or plot beats from source episodes.",
       styleReferences.join("\n\n")
     ].join("\n\n");
 
     return {
       context,
-      sources: styleReferences
+      sources: styleReferences,
+      forbiddenTerms
     };
   }
 
@@ -235,6 +256,7 @@ export const buildTranscriptContext = async (seed: string, filters: Filters) => 
       "Reference excerpts (style only; do not copy names, entities, locations, or plot beats):",
       sources.join("\n\n")
     ].join("\n\n"),
-    sources
+    sources,
+    forbiddenTerms
   };
 };

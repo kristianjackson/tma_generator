@@ -83,6 +83,7 @@ const generateOutlineAction = async (formData: FormData) => {
       seed: run.seed,
       filters,
       context: context.context,
+      forbiddenTerms: context.forbiddenTerms,
       notes: notes || undefined
     });
 

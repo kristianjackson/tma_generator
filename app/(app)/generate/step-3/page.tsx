@@ -100,6 +100,7 @@ const generateDraftAction = async (formData: FormData) => {
       outline,
       filters,
       context: context.context,
+      forbiddenTerms: context.forbiddenTerms,
       notes: notes || undefined
     });
 

@@ -163,6 +163,94 @@ const allowsCanonCarryover = (seed: string, notes?: string) =>
     `${seed}\n${notes ?? ""}`
   );
 
+const CANON_FORBIDDEN_TERMS = [
+  "magnus institute",
+  "jonathan sims",
+  "elias bouchard",
+  "gertrude robinson",
+  "martin blackwood",
+  "tim stoker",
+  "sasha james",
+  "adelard dekker",
+  "not sasha",
+  "the distortion",
+  "michael",
+  "nikola orsinov",
+  "jane prentiss",
+  "breekon and hope",
+  "old fishmarket close",
+  "hill top road",
+  "artifact storage",
+  "statement begins",
+  "statement ends",
+  "end recording",
+  "the magnus archives"
+];
+
+const normalizeForMatch = (value: string) =>
+  value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+const buildForbiddenTerms = (extra: string[] | undefined, allowCanon: boolean) => {
+  if (allowCanon) {
+    return [] as string[];
+  }
+
+  return Array.from(
+    new Set(
+      [...CANON_FORBIDDEN_TERMS, ...(extra ?? [])]
+        .map((item) => item.trim())
+        .filter(Boolean)
+    )
+  ).slice(0, 120);
+};
+
+const collectForbiddenMatches = (text: string, terms: string[]) => {
+  if (!text || terms.length === 0) {
+    return [] as string[];
+  }
+
+  const normalizedText = normalizeForMatch(text);
+  const matches: string[] = [];
+
+  for (const term of terms) {
+    const normalizedTerm = normalizeForMatch(term);
+    if (normalizedTerm.length < 3) {
+      continue;
+    }
+    if (normalizedText.includes(normalizedTerm)) {
+      matches.push(term);
+      if (matches.length >= 10) {
+        break;
+      }
+    }
+  }
+
+  return matches;
+};
+
+const generateWithCanonGuard = async (input: {
+  buildMessages: (matches: string[]) => Array<{ role: string; content: string }>;
+  options: Record<string, unknown>;
+  forbiddenTerms: string[];
+}) => {
+  if (input.forbiddenTerms.length === 0) {
+    return runAiChat(input.buildMessages([]), input.options);
+  }
+
+  let matches: string[] = [];
+  let lastText = "";
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    lastText = await runAiChat(input.buildMessages(matches), input.options);
+    matches = collectForbiddenMatches(lastText, input.forbiddenTerms);
+    if (matches.length === 0) {
+      return lastText;
+    }
+  }
+
+  throw new Error(`Output contained forbidden canon terms: ${matches.join(", ")}`);
+};
+
 const FEAR_CANONICAL = [
   "The Beholding",
   "The Buried",
@@ -278,6 +366,7 @@ export const generateOutline = async (input: {
   seed: string;
   filters: Record<string, unknown>;
   context: string;
+  forbiddenTerms?: string[];
   notes?: string;
 }) => {
   const filters = input.filters as {
@@ -342,23 +431,36 @@ Avoid meta commentary.`;
     .filter(Boolean)
     .join("\n\n");
 
-  return runAiChat(
-    [
+  const forbiddenTerms = buildForbiddenTerms(
+    input.forbiddenTerms,
+    canonCarryoverAllowed
+  );
+  const forbiddenBlock =
+    forbiddenTerms.length > 0
+      ? `Forbidden terms and canon references (must not appear): ${forbiddenTerms
+          .slice(0, 80)
+          .join(", ")}`
+      : "";
+
+  return generateWithCanonGuard({
+    forbiddenTerms,
+    options: { max_tokens: 900 },
+    buildMessages: (matches) => [
       { role: "system", content: prompt },
       {
         role: "user",
         content: `Seed:\n${input.seed}\n\nFilters:\n${
           filterNotes || "none"
-        }\n\n${notesBlock ? `${notesBlock}\n\n` : ""}Non-negotiable constraints:
+        }\n\n${notesBlock ? `${notesBlock}\n\n` : ""}${forbiddenBlock ? `${forbiddenBlock}\n\n` : ""}Non-negotiable constraints:
 - Build around the seed premise directly.
 - Use transcript context for style only, never as plot source material.
 - Keep events, entities, and names original unless continuation is explicitly requested.
+${matches.length > 0 ? `- Retry rule: your previous attempt reused forbidden terms (${matches.join(", ")}). Regenerate with fully original names/entities/events.\n` : ""}
 
 Transcript references:\n${input.context}`
       }
     ],
-    { max_tokens: 900 }
-  );
+  });
 };
 
 export const generateDraft = async (input: {
@@ -366,6 +468,7 @@ export const generateDraft = async (input: {
   outline: string;
   filters: Record<string, unknown>;
   context: string;
+  forbiddenTerms?: string[];
   notes?: string;
 }) => {
   const canonCarryoverAllowed = allowsCanonCarryover(input.seed, input.notes);
@@ -429,24 +532,37 @@ Write in the voice of a formal statement and archival notes.`;
     .filter(Boolean)
     .join("\n\n");
 
-  return runAiChat(
-    [
+  const forbiddenTerms = buildForbiddenTerms(
+    input.forbiddenTerms,
+    canonCarryoverAllowed
+  );
+  const forbiddenBlock =
+    forbiddenTerms.length > 0
+      ? `Forbidden terms and canon references (must not appear): ${forbiddenTerms
+          .slice(0, 80)
+          .join(", ")}`
+      : "";
+
+  return generateWithCanonGuard({
+    forbiddenTerms,
+    options: { max_tokens: 2000 },
+    buildMessages: (matches) => [
       { role: "system", content: prompt },
       {
         role: "user",
         content: `Seed:\n${input.seed}\n\nFilters:\n${
           filterNotes || "none"
-        }\n\n${notesBlock ? `${notesBlock}\n\n` : ""}Outline:\n${truncateForSize(
+        }\n\n${notesBlock ? `${notesBlock}\n\n` : ""}${forbiddenBlock ? `${forbiddenBlock}\n\n` : ""}Outline:\n${truncateForSize(
           input.outline,
           7000
         )}\n\nNon-negotiable constraints:
 - Keep the seed premise central to every major section.
 - Use transcript references for style only, never as a source of plot or names.
 - Keep events, entities, and names original unless continuation is explicitly requested.
+${matches.length > 0 ? `- Retry rule: your previous attempt reused forbidden terms (${matches.join(", ")}). Regenerate with fully original names/entities/events.\n` : ""}
 
 Transcript references:\n${truncateForSize(input.context, 9000)}`
       }
     ],
-    { max_tokens: 2000 }
-  );
+  });
 };
