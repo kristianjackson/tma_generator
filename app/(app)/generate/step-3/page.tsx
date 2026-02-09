@@ -35,6 +35,16 @@ type VersionHistoryRow = {
 const getFirstValue = (value?: string | string[]) =>
   Array.isArray(value) ? value[0] : value;
 
+const isNextRedirectError = (error: unknown) => {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const digest =
+    "digest" in error ? (error as { digest?: unknown }).digest : undefined;
+  return typeof digest === "string" && digest.startsWith("NEXT_REDIRECT");
+};
+
 const generateDraftAction = async (formData: FormData) => {
   "use server";
 
@@ -108,6 +118,10 @@ const generateDraftAction = async (formData: FormData) => {
     revalidatePath("/generate/step-3");
     redirect(`/generate/step-3?run=${runId}`);
   } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
     const message = error instanceof Error ? error.message : "Unknown AI error";
     const normalizedMessage = message.toLowerCase();
     const notice = normalizedMessage.includes("binding")
