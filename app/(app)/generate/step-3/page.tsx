@@ -8,6 +8,7 @@ import { generateDraft } from "@/app/lib/ai";
 import AutoSubmitForm from "@/app/components/AutoSubmitForm";
 import SubmitButton from "@/app/components/SubmitButton";
 import ExportActions from "@/app/components/ExportActions";
+import DismissibleDetails from "@/app/components/DismissibleDetails";
 import { getRunDisplayName } from "@/app/lib/run-utils";
 
 type SearchParams = {
@@ -308,7 +309,12 @@ export default async function GenerateStepThreePage({
             Back to outline
           </Link>
         </div>
-        <p className="subhead">Seed: {run.seed}</p>
+        <p className="subhead">
+          Seed: {run.seed}
+          <br />
+          This step generates the full story draft. Final edits happen in Review &
+          edit.
+        </p>
         {notice === "ai-missing" ? (
           <p className="notice">
             AI binding not configured. Add a Workers AI binding named
@@ -342,10 +348,13 @@ export default async function GenerateStepThreePage({
           </div>
         ) : null}
         <div className="card">
-          <h2>{hasDraft ? "Regenerate draft" : "Generate draft"}</h2>
+          <h2>
+            {hasDraft ? "Regenerate full story draft" : "Generate full story draft"}
+          </h2>
           <p className="subhead">
-            Add optional notes to steer the draft. Regenerating preserves the
-            previous draft as a revision.
+            Click generate to produce the full episode draft from your outline. Add
+            optional notes to steer details. Regenerating preserves the previous
+            draft as a revision.
           </p>
           <form className="form" action={generateDraftAction}>
             <input type="hidden" name="runId" value={runId} />
@@ -362,7 +371,9 @@ export default async function GenerateStepThreePage({
             <div className="actions">
               <SubmitButton
                 className="ghost"
-                idleText={hasDraft ? "Regenerate draft" : "Generate draft"}
+                idleText={
+                  hasDraft ? "Regenerate full story draft" : "Generate full story draft"
+                }
                 pendingText="Generating..."
               />
             </div>
@@ -410,10 +421,11 @@ export default async function GenerateStepThreePage({
             <p className="subhead">No draft revisions yet.</p>
           ) : (
             draftVersions.results.map((version) => (
-              <details key={version.id} className="revision">
-                <summary>
-                  {new Date(version.created_at).toLocaleString("en-US")}
-                </summary>
+              <DismissibleDetails
+                key={version.id}
+                className="revision"
+                summary={new Date(version.created_at).toLocaleString("en-US")}
+              >
                 <pre className="code-block">{version.content}</pre>
                 <form className="actions" action={restoreDraftAction}>
                   <input type="hidden" name="runId" value={runId} />
@@ -422,7 +434,7 @@ export default async function GenerateStepThreePage({
                     Restore this draft
                   </button>
                 </form>
-              </details>
+              </DismissibleDetails>
             ))
           )}
         </div>

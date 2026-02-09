@@ -8,6 +8,7 @@ import { generateOutline } from "@/app/lib/ai";
 import AutoSubmitForm from "@/app/components/AutoSubmitForm";
 import SubmitButton from "@/app/components/SubmitButton";
 import ExportActions from "@/app/components/ExportActions";
+import DismissibleDetails from "@/app/components/DismissibleDetails";
 import { getRunDisplayName } from "@/app/lib/run-utils";
 
 type SearchParams = {
@@ -393,10 +394,11 @@ export default async function GenerateStepTwoPage({
             <p className="subhead">No outline revisions yet.</p>
           ) : (
             outlineVersions.results.map((version) => (
-              <details key={version.id} className="revision">
-                <summary>
-                  {new Date(version.created_at).toLocaleString("en-US")}
-                </summary>
+              <DismissibleDetails
+                key={version.id}
+                className="revision"
+                summary={new Date(version.created_at).toLocaleString("en-US")}
+              >
                 <pre className="code-block">{version.content}</pre>
                 <form className="actions" action={restoreOutlineAction}>
                   <input type="hidden" name="runId" value={runId} />
@@ -405,7 +407,7 @@ export default async function GenerateStepTwoPage({
                     Restore this outline
                   </button>
                 </form>
-              </details>
+              </DismissibleDetails>
             ))
           )}
         </div>
