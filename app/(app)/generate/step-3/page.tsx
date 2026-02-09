@@ -130,6 +130,8 @@ const generateDraftAction = async (formData: FormData) => {
       ? "ai-missing"
       : normalizedMessage.includes("forbidden canon terms")
         ? "ai-canon-rewrite"
+      : normalizedMessage.includes("outline/script output")
+        ? "ai-format"
       : normalizedMessage.includes("token") ||
           normalizedMessage.includes("context") ||
           normalizedMessage.includes("too long") ||
@@ -334,6 +336,12 @@ export default async function GenerateStepThreePage({
           <p className="notice">
             AI draft request exceeded model limits. Try reducing outline length or
             filters.
+          </p>
+        ) : null}
+        {notice === "ai-format" ? (
+          <p className="notice">
+            AI returned outline-like formatting. The system retried automatically but
+            still failed to get full prose. Try regenerating.
           </p>
         ) : null}
         {errorMessage ? (

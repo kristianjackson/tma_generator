@@ -1,4 +1,5 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
+import { isNarrativeDraftOutput } from "./draft-shape";
 
 type AiBinding = {
   run: (model: string, options: unknown) => Promise<unknown>;
@@ -588,9 +589,9 @@ Write in the voice of a formal statement and archival notes.`;
           .join(", ")}`
       : "";
 
-  return generateWithCanonGuard({
+  let draftText = await generateWithCanonGuard({
     forbiddenTerms,
-    options: { max_tokens: 1700 },
+    options: { max_tokens: 2200 },
     maxAttempts: 2,
     onFailure: async ({ matches, lastText }) => {
       return runAiChat(
@@ -615,7 +616,7 @@ Previous attempt:
 ${truncateForSize(lastText, 5000)}`
           }
         ],
-        { max_tokens: 1700, temperature: 0.65 }
+        { max_tokens: 2200, temperature: 0.65 }
       );
     },
     buildMessages: (matches) => [
@@ -637,4 +638,47 @@ Transcript references:\n${truncateForSize(input.context, 9000)}`
       }
     ],
   });
+
+  if (isNarrativeDraftOutput(draftText)) {
+    return draftText;
+  }
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    draftText = await generateWithCanonGuard({
+      forbiddenTerms,
+      options: { max_tokens: 2200, temperature: 0.65 },
+      maxAttempts: 2,
+      buildMessages: (matches) => [
+        {
+          role: "system",
+          content:
+            "Rewrite the text as full narrative prose in statement form. Do not return an outline, section headings, bullets, screenplay formatting, or stage directions."
+        },
+        {
+          role: "user",
+          content: `Seed:
+${input.seed}
+
+${notesBlock ? `${notesBlock}\n\n` : ""}${forbiddenBlock ? `${forbiddenBlock}\n\n` : ""}Outline:
+${truncateForSize(input.outline, 7000)}
+
+Rewrite target:
+- Output only story prose.
+- No headings like "Section 1", no bullet/number lists.
+- No screenplay formatting (NAME: dialogue) and no stage directions in brackets.
+- Keep the seed and outline events intact.
+${matches.length > 0 ? `- Retry rule: your previous attempt reused forbidden terms (${matches.join(", ")}). Regenerate with fully original names/entities/events.\n` : ""}
+
+Previous non-compliant attempt:
+${truncateForSize(draftText, 5000)}`
+        }
+      ]
+    });
+
+    if (isNarrativeDraftOutput(draftText)) {
+      return draftText;
+    }
+  }
+
+  throw new Error("AI returned outline/script output instead of full prose draft.");
 };
