@@ -127,6 +127,8 @@ const generateDraftAction = async (formData: FormData) => {
     const normalizedMessage = message.toLowerCase();
     const notice = normalizedMessage.includes("binding")
       ? "ai-missing"
+      : normalizedMessage.includes("forbidden canon terms")
+        ? "ai-canon-rewrite"
       : normalizedMessage.includes("token") ||
           normalizedMessage.includes("context") ||
           normalizedMessage.includes("too long") ||
@@ -140,9 +142,11 @@ const generateDraftAction = async (formData: FormData) => {
       .run();
     const params = new URLSearchParams({
       run: runId,
-      notice,
-      error: message.slice(0, 220)
+      notice
     });
+    if (process.env.NODE_ENV !== "production") {
+      params.set("error", message.slice(0, 220));
+    }
     redirect(`/generate/step-3?${params.toString()}`);
   }
 };
@@ -313,6 +317,12 @@ export default async function GenerateStepThreePage({
         ) : null}
         {notice === "ai-failed" ? (
           <p className="notice">AI draft generation failed. Try again.</p>
+        ) : null}
+        {notice === "ai-canon-rewrite" ? (
+          <p className="notice">
+            AI output reused canon references and was rejected. Try regenerating
+            after refining the seed or notes.
+          </p>
         ) : null}
         {notice === "ai-too-long" ? (
           <p className="notice">

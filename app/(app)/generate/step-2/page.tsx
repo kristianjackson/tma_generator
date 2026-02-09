@@ -110,6 +110,8 @@ const generateOutlineAction = async (formData: FormData) => {
     const normalizedMessage = message.toLowerCase();
     const notice = normalizedMessage.includes("binding")
       ? "ai-missing"
+      : normalizedMessage.includes("forbidden canon terms")
+        ? "ai-canon-rewrite"
       : normalizedMessage.includes("token") ||
           normalizedMessage.includes("context") ||
           normalizedMessage.includes("too long") ||
@@ -123,9 +125,11 @@ const generateOutlineAction = async (formData: FormData) => {
       .run();
     const params = new URLSearchParams({
       run: runId,
-      notice,
-      error: message.slice(0, 220)
+      notice
     });
+    if (process.env.NODE_ENV !== "production") {
+      params.set("error", message.slice(0, 220));
+    }
     redirect(`/generate/step-2?${params.toString()}`);
   }
 };
@@ -299,6 +303,12 @@ export default async function GenerateStepTwoPage({
         ) : null}
         {notice === "ai-failed" ? (
           <p className="notice">AI outline generation failed. Try again.</p>
+        ) : null}
+        {notice === "ai-canon-rewrite" ? (
+          <p className="notice">
+            AI output reused canon references and was rejected. Try again with
+            stricter notes or a more specific seed.
+          </p>
         ) : null}
         {notice === "ai-too-long" ? (
           <p className="notice">

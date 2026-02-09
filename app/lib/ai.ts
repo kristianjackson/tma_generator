@@ -232,20 +232,39 @@ const generateWithCanonGuard = async (input: {
   buildMessages: (matches: string[]) => Array<{ role: string; content: string }>;
   options: Record<string, unknown>;
   forbiddenTerms: string[];
+  maxAttempts?: number;
+  onFailure?: (input: {
+    matches: string[];
+    lastText: string;
+  }) => Promise<string>;
 }) => {
   if (input.forbiddenTerms.length === 0) {
     return runAiChat(input.buildMessages([]), input.options);
   }
 
+  const maxAttempts = Math.max(1, input.maxAttempts ?? 3);
   let matches: string[] = [];
   let lastText = "";
 
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     lastText = await runAiChat(input.buildMessages(matches), input.options);
     matches = collectForbiddenMatches(lastText, input.forbiddenTerms);
     if (matches.length === 0) {
       return lastText;
     }
+  }
+
+  if (input.onFailure) {
+    const fallbackText = await input.onFailure({ matches, lastText });
+    const fallbackMatches = collectForbiddenMatches(
+      fallbackText,
+      input.forbiddenTerms
+    );
+    if (fallbackMatches.length === 0) {
+      return fallbackText;
+    }
+
+    matches = fallbackMatches;
   }
 
   throw new Error(`Output contained forbidden canon terms: ${matches.join(", ")}`);
@@ -444,7 +463,33 @@ Avoid meta commentary.`;
 
   return generateWithCanonGuard({
     forbiddenTerms,
-    options: { max_tokens: 900 },
+    options: { max_tokens: 780 },
+    maxAttempts: 2,
+    onFailure: async ({ matches, lastText }) => {
+      return runAiChat(
+        [
+          {
+            role: "system",
+            content:
+              "You write original horror episode outlines in a Magnus-inspired style. Do not use canon names, entities, locations, or plot callbacks. Produce a clean, original outline only."
+          },
+          {
+            role: "user",
+            content: `Seed:
+${input.seed}
+
+${notesBlock ? `${notesBlock}\n\n` : ""}${forbiddenBlock ? `${forbiddenBlock}\n\n` : ""}Previous attempt reused blocked terms: ${matches.join(", ")}.
+Rewrite it so all names, entities, places, and events are original.
+
+Return exactly a numbered outline with 5-7 sections and 2-4 bullets each.
+
+Previous attempt:
+${truncateForSize(lastText, 4000)}`
+          }
+        ],
+        { max_tokens: 780, temperature: 0.65 }
+      );
+    },
     buildMessages: (matches) => [
       { role: "system", content: prompt },
       {
@@ -545,7 +590,34 @@ Write in the voice of a formal statement and archival notes.`;
 
   return generateWithCanonGuard({
     forbiddenTerms,
-    options: { max_tokens: 2000 },
+    options: { max_tokens: 1700 },
+    maxAttempts: 2,
+    onFailure: async ({ matches, lastText }) => {
+      return runAiChat(
+        [
+          {
+            role: "system",
+            content:
+              "You write original horror drafts in a Magnus-inspired archival style. Do not use canon names, entities, locations, or reused scene structure."
+          },
+          {
+            role: "user",
+            content: `Seed:
+${input.seed}
+
+${notesBlock ? `${notesBlock}\n\n` : ""}${forbiddenBlock ? `${forbiddenBlock}\n\n` : ""}Outline:
+${truncateForSize(input.outline, 7000)}
+
+Previous attempt reused blocked terms: ${matches.join(", ")}.
+Rewrite it to be fully original while preserving the seed and outline.
+
+Previous attempt:
+${truncateForSize(lastText, 5000)}`
+          }
+        ],
+        { max_tokens: 1700, temperature: 0.65 }
+      );
+    },
     buildMessages: (matches) => [
       { role: "system", content: prompt },
       {

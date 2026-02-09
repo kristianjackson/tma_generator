@@ -72,6 +72,7 @@ a {
 }
 
 .page {
+  width: 100%;
   min-height: calc(100vh - 72px);
   display: grid;
   place-items: center;
@@ -88,22 +89,18 @@ a {
 }
 
 .hero-wide {
-  width: min(94vw, 1500px);
+  width: min(96vw, 1500px);
 }
 
 .hero-ingestion {
-  width: min(94vw, 1500px);
-  max-width: 94vw;
+  width: min(96vw, 1500px);
+  max-width: 96vw;
   padding: clamp(20px, 2.8vw, 42px);
   margin: 0 auto;
 }
 
 .hero-ingestion .card {
   padding: 28px;
-}
-
-.hero-ingestion .table {
-  min-width: 1260px;
 }
 
 .hero-ingestion .table th {
@@ -117,7 +114,7 @@ a {
 }
 
 .hero-ingestion .table-card table {
-  width: 100%;
+  width: max(100%, 1080px);
   table-layout: fixed;
 }
 
@@ -139,7 +136,7 @@ a {
 
 .hero-ingestion .table-card th:nth-child(3),
 .hero-ingestion .table-card td:nth-child(3) {
-  width: 10%;
+  width: 9%;
 }
 
 .hero-ingestion .table-card th:nth-child(4),
@@ -151,17 +148,17 @@ a {
 
 .hero-ingestion .table-card th:nth-child(6),
 .hero-ingestion .table-card td:nth-child(6) {
-  width: 7%;
+  width: 8%;
 }
 
 .hero-ingestion .table-card th:nth-child(7),
 .hero-ingestion .table-card td:nth-child(7) {
-  width: 35%;
+  width: 30%;
 }
 
 .hero-ingestion .table-card th:nth-child(8),
 .hero-ingestion .table-card td:nth-child(8) {
-  width: 16%;
+  width: 14%;
   white-space: nowrap;
 }
 
