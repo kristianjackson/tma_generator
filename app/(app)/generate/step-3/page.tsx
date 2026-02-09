@@ -356,6 +356,12 @@ export default async function GenerateStepThreePage({
             optional notes to steer details. Regenerating preserves the previous
             draft as a revision.
           </p>
+          <p className="hint">
+            Use the button below:{" "}
+            <strong>
+              {hasDraft ? "Regenerate full story draft" : "Generate full story draft"}
+            </strong>
+          </p>
           <form className="form" action={generateDraftAction}>
             <input type="hidden" name="runId" value={runId} />
             <label className="form-label" htmlFor="notes">
@@ -370,7 +376,7 @@ export default async function GenerateStepThreePage({
             />
             <div className="actions">
               <SubmitButton
-                className="ghost"
+                className="primary"
                 idleText={
                   hasDraft ? "Regenerate full story draft" : "Generate full story draft"
                 }
