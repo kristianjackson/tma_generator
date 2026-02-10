@@ -1,5 +1,6 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { isNarrativeDraftOutput } from "./draft-shape";
+import { allowsCanonCarryover } from "./canon-policy";
 
 type AiBinding = {
   run: (model: string, options: unknown) => Promise<unknown>;
@@ -158,11 +159,6 @@ const extractJson = (text: string): AiSuggestion | null => {
     return null;
   }
 };
-
-const allowsCanonCarryover = (seed: string, notes?: string) =>
-  /(continue|continuation|sequel|follow[- ]?up|same story|same episode|pick up where)/i.test(
-    `${seed}\n${notes ?? ""}`
-  );
 
 const CANON_FORBIDDEN_TERMS = [
   "magnus institute",
@@ -397,7 +393,12 @@ export const generateOutline = async (input: {
     brief?: string | null;
   };
 
-  const canonCarryoverAllowed = allowsCanonCarryover(input.seed, input.notes);
+  const canonCarryoverAllowed = allowsCanonCarryover({
+    seed: input.seed,
+    notes: input.notes,
+    includeCast: filters.includeCast,
+    cast: filters.cast
+  });
 
   const toneMap: Record<string, string> = {
     classic: "Classic TMA: archival, understated, formal statement voice.",
@@ -517,8 +518,6 @@ export const generateDraft = async (input: {
   forbiddenTerms?: string[];
   notes?: string;
 }) => {
-  const canonCarryoverAllowed = allowsCanonCarryover(input.seed, input.notes);
-
   const filters = input.filters as {
     tone?: string;
     length?: string;
@@ -526,6 +525,13 @@ export const generateDraft = async (input: {
     cast?: string[];
     brief?: string | null;
   };
+
+  const canonCarryoverAllowed = allowsCanonCarryover({
+    seed: input.seed,
+    notes: input.notes,
+    includeCast: filters.includeCast,
+    cast: filters.cast
+  });
 
   const toneMap: Record<string, string> = {
     classic: "Classic TMA: archival, understated, formal statement voice.",
