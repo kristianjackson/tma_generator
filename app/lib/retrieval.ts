@@ -8,7 +8,24 @@ type Filters = {
   warnings?: string[];
   length?: string;
   tone?: string;
-  includeCast?: boolean;
+  includeCast?: boolean | string;
+  include_cast?: boolean | string;
+};
+
+const parseOptionalBoolean = (value: unknown): boolean | undefined => {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const normalized = value.toLowerCase();
+    if (["true", "yes", "1", "on"].includes(normalized)) {
+      return true;
+    }
+    if (["false", "no", "0", "off"].includes(normalized)) {
+      return false;
+    }
+  }
+  return undefined;
 };
 
 type TranscriptRow = {
@@ -53,7 +70,10 @@ const buildKeywordSet = (seed: string, filters: Filters) => {
 
   seedTokens.forEach((token) => tokens.add(token));
   (filters.fears ?? []).forEach((item) => tokens.add(normalizeToken(item)));
-  const castTokens = filters.includeCast === false ? [] : filters.cast ?? [];
+  const includeCast = parseOptionalBoolean(
+    filters.includeCast ?? filters.include_cast
+  );
+  const castTokens = includeCast === false ? [] : filters.cast ?? [];
   castTokens.forEach((item) => tokens.add(normalizeToken(item)));
   (filters.motifs ?? []).forEach((item) => tokens.add(normalizeToken(item)));
   (filters.locations ?? []).forEach((item) =>
@@ -116,8 +136,10 @@ export const buildTranscriptContext = async (seed: string, filters: Filters) => 
     const locations = parseJsonList(row.locations_json);
     const warnings = parseJsonList(row.warnings_json);
 
-    const castFilters =
-      filters.includeCast === false ? [] : filters.cast ?? [];
+    const includeCast = parseOptionalBoolean(
+      filters.includeCast ?? filters.include_cast
+    );
+    const castFilters = includeCast === false ? [] : filters.cast ?? [];
 
     const matchesFilters =
       hasAnyMatch(fears, filters.fears ?? []) &&

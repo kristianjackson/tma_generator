@@ -22,6 +22,16 @@ test("canon-policy: allows when includeCast is enabled", () => {
   );
 });
 
+test("canon-policy: allows with legacy include_cast flag", () => {
+  assert.equal(
+    allowsCanonCarryover({
+      seed: "new statement in a server room",
+      include_cast: "yes"
+    }),
+    true
+  );
+});
+
 test("canon-policy: allows when cast filters are selected", () => {
   assert.equal(
     allowsCanonCarryover({
@@ -40,4 +50,3 @@ test("canon-policy: rejects by default when no canon signal is present", () => {
     false
   );
 });
-

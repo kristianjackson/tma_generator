@@ -5,7 +5,6 @@ import { redirect } from "next/navigation";
 import { requireDb } from "@/app/lib/db";
 import { buildTranscriptContext } from "@/app/lib/retrieval";
 import { generateOutline } from "@/app/lib/ai";
-import AutoSubmitForm from "@/app/components/AutoSubmitForm";
 import SubmitButton from "@/app/components/SubmitButton";
 import ExportActions from "@/app/components/ExportActions";
 import DismissibleDetails from "@/app/components/DismissibleDetails";
@@ -271,7 +270,6 @@ export default async function GenerateStepTwoPage({
     .bind(runId, "outline")
     .first<VersionRow>();
   const outline = outlineRow?.content ?? "";
-  const shouldAutoGenerate = !outline && !notice;
   const hasOutline = Boolean(outline);
   const runLabel = getRunDisplayName(run.title, run.seed);
 
@@ -322,11 +320,11 @@ export default async function GenerateStepTwoPage({
             Error detail: <code>{errorMessage}</code>
           </p>
         ) : null}
-        {shouldAutoGenerate ? (
-          <div className="notice notice-loading">
-            <span className="spinner" aria-hidden="true" />
-            Generating outline now. This can take a minute.
-          </div>
+        {!hasOutline && !notice ? (
+          <p className="notice">
+            Click <strong>{hasOutline ? "Regenerate outline" : "Generate outline"}</strong>{" "}
+            to create your first outline.
+          </p>
         ) : null}
         <div className="card">
           <h2>{hasOutline ? "Regenerate outline" : "Generate outline"}</h2>
@@ -354,9 +352,6 @@ export default async function GenerateStepTwoPage({
               />
             </div>
           </form>
-          <AutoSubmitForm action={generateOutlineAction} enabled={shouldAutoGenerate}>
-            <input type="hidden" name="runId" value={runId} />
-          </AutoSubmitForm>
         </div>
         <form className="form" action={saveOutlineAction}>
           <input type="hidden" name="runId" value={runId} />

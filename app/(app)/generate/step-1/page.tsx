@@ -88,6 +88,7 @@ const createRunAction = async (formData: FormData) => {
         length,
         tone,
         includeCast,
+        include_cast: includeCast,
         fears,
         cast,
         motifs,

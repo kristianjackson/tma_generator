@@ -342,6 +342,22 @@ const truncateTranscript = (content: string, maxChars = 12000) => {
   return truncateForSize(content, maxChars);
 };
 
+const parseIncludeCastFilter = (value: unknown): boolean | undefined => {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const normalized = value.toLowerCase();
+    if (["true", "yes", "1", "on"].includes(normalized)) {
+      return true;
+    }
+    if (["false", "no", "0", "off"].includes(normalized)) {
+      return false;
+    }
+  }
+  return undefined;
+};
+
 export const suggestMetadata = async (title: string, content: string) => {
   const prompt = `You are tagging The Magnus Archives transcripts.
 Return JSON with keys: summary, fears, cast, motifs, locations.
@@ -388,15 +404,21 @@ export const generateOutline = async (input: {
   const filters = input.filters as {
     tone?: string;
     length?: string;
-    includeCast?: boolean;
+    includeCast?: boolean | string;
+    include_cast?: boolean | string;
     cast?: string[];
     brief?: string | null;
   };
 
+  const includeCast = parseIncludeCastFilter(
+    filters.includeCast ?? filters.include_cast
+  );
+
   const canonCarryoverAllowed = allowsCanonCarryover({
     seed: input.seed,
     notes: input.notes,
-    includeCast: filters.includeCast,
+    includeCast,
+    include_cast: filters.include_cast,
     cast: filters.cast
   });
 
@@ -419,7 +441,7 @@ export const generateOutline = async (input: {
         : "Episode outline: aim for 6,000-9,000 words in the final draft.";
 
   const castNote =
-    filters.includeCast === false
+    includeCast === false
       ? "Avoid established Magnus Institute cast. Use new names only."
       : (filters.cast ?? []).length > 0
         ? "You may include 1-2 named cast members from the selected list."
@@ -521,15 +543,21 @@ export const generateDraft = async (input: {
   const filters = input.filters as {
     tone?: string;
     length?: string;
-    includeCast?: boolean;
+    includeCast?: boolean | string;
+    include_cast?: boolean | string;
     cast?: string[];
     brief?: string | null;
   };
 
+  const includeCast = parseIncludeCastFilter(
+    filters.includeCast ?? filters.include_cast
+  );
+
   const canonCarryoverAllowed = allowsCanonCarryover({
     seed: input.seed,
     notes: input.notes,
-    includeCast: filters.includeCast,
+    includeCast,
+    include_cast: filters.include_cast,
     cast: filters.cast
   });
 
@@ -552,7 +580,7 @@ export const generateDraft = async (input: {
         : "Target 6,000-9,000 words.";
 
   const castNote =
-    filters.includeCast === false
+    includeCast === false
       ? "Avoid established Magnus Institute cast. Use new names only."
       : (filters.cast ?? []).length > 0
         ? "You may include 1-2 named cast members from the selected list."

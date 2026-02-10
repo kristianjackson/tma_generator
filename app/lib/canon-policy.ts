@@ -2,6 +2,7 @@ type CanonPolicyInput = {
   seed: string;
   notes?: string;
   includeCast?: boolean;
+  include_cast?: boolean | string;
   cast?: string[];
   allowCanon?: boolean;
 };
@@ -14,7 +15,13 @@ export const allowsCanonCarryover = (input: CanonPolicyInput) => {
     return true;
   }
 
-  if (input.includeCast) {
+  const includeCastValue =
+    input.includeCast ??
+    (typeof input.include_cast === "string"
+      ? ["true", "yes", "1", "on"].includes(input.include_cast.toLowerCase())
+      : input.include_cast);
+
+  if (includeCastValue) {
     return true;
   }
 
@@ -24,4 +31,3 @@ export const allowsCanonCarryover = (input: CanonPolicyInput) => {
 
   return CONTINUATION_PATTERN.test(`${input.seed}\n${input.notes ?? ""}`);
 };
-

@@ -5,7 +5,6 @@ import { redirect } from "next/navigation";
 import { requireDb } from "@/app/lib/db";
 import { buildTranscriptContext } from "@/app/lib/retrieval";
 import { generateDraft } from "@/app/lib/ai";
-import AutoSubmitForm from "@/app/components/AutoSubmitForm";
 import SubmitButton from "@/app/components/SubmitButton";
 import ExportActions from "@/app/components/ExportActions";
 import DismissibleDetails from "@/app/components/DismissibleDetails";
@@ -290,7 +289,6 @@ export default async function GenerateStepThreePage({
     .bind(runId, "draft")
     .first<VersionRow>();
   const draft = draftRow?.content ?? "";
-  const shouldAutoGenerate = !draft && !notice;
   const hasDraft = Boolean(draft);
   const runLabel = getRunDisplayName(run.title, run.seed);
 
@@ -349,11 +347,11 @@ export default async function GenerateStepThreePage({
             Error detail: <code>{errorMessage}</code>
           </p>
         ) : null}
-        {shouldAutoGenerate ? (
-          <div className="notice notice-loading">
-            <span className="spinner" aria-hidden="true" />
-            Generating draft now. This can take a minute.
-          </div>
+        {!hasDraft && !notice ? (
+          <p className="notice">
+            Click <strong>{hasDraft ? "Regenerate full story draft" : "Generate full story draft"}</strong>{" "}
+            to create your first full draft.
+          </p>
         ) : null}
         <div className="card">
           <h2>
@@ -392,9 +390,6 @@ export default async function GenerateStepThreePage({
               />
             </div>
           </form>
-          <AutoSubmitForm action={generateDraftAction} enabled={shouldAutoGenerate}>
-            <input type="hidden" name="runId" value={runId} />
-          </AutoSubmitForm>
         </div>
         <form className="form" action={saveDraftAction}>
           <input type="hidden" name="runId" value={runId} />
