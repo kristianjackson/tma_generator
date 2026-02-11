@@ -1,6 +1,6 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { isNarrativeDraftOutput } from "./draft-shape";
-import { allowsCanonCarryover } from "./canon-policy";
+import { allowsCanonCarryover, allowsCastCarryover } from "./canon-policy";
 
 type AiBinding = {
   run: (model: string, options: unknown) => Promise<unknown>;
@@ -160,14 +160,17 @@ const extractJson = (text: string): AiSuggestion | null => {
   }
 };
 
-const CANON_FORBIDDEN_TERMS = [
-  "magnus institute",
+const CANON_CAST_TERMS = [
   "jonathan sims",
   "elias bouchard",
   "gertrude robinson",
   "martin blackwood",
   "tim stoker",
-  "sasha james",
+  "sasha james"
+];
+
+const CANON_NON_CAST_TERMS = [
+  "magnus institute",
   "adelard dekker",
   "not sasha",
   "the distortion",
@@ -187,18 +190,240 @@ const CANON_FORBIDDEN_TERMS = [
 const normalizeForMatch = (value: string) =>
   value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
-const buildForbiddenTerms = (extra: string[] | undefined, allowCanon: boolean) => {
-  if (allowCanon) {
+const resolveAllowedCastTerms = (selectedCast: string[] | undefined) => {
+  const selected = (selectedCast ?? [])
+    .map((item) => item.trim())
+    .filter(Boolean);
+  if (selected.length === 0) {
+    return [...CANON_CAST_TERMS];
+  }
+
+  const normalizedSelected = selected.map(normalizeForMatch);
+  const allowlist = new Set<string>();
+
+  for (const castName of CANON_CAST_TERMS) {
+    const normalizedCastName = normalizeForMatch(castName);
+    for (const selectedName of normalizedSelected) {
+      if (
+        normalizedCastName === selectedName ||
+        normalizedCastName.includes(selectedName) ||
+        selectedName.includes(normalizedCastName)
+      ) {
+        allowlist.add(castName);
+      }
+    }
+  }
+
+  for (const selectedName of selected) {
+    allowlist.add(selectedName);
+  }
+
+  return Array.from(allowlist);
+};
+
+const buildForbiddenTerms = (
+  extra: string[] | undefined,
+  options: {
+    allowCanon: boolean;
+    allowCast: boolean;
+    allowedCastTerms?: string[];
+  }
+) => {
+  if (options.allowCanon) {
     return [] as string[];
   }
 
+  const allowedCastTerms = options.allowCast
+    ? options.allowedCastTerms ?? []
+    : [];
+  const allowedCastLookup = new Set(allowedCastTerms.map(normalizeForMatch));
+
+  const coreTerms = [
+    ...CANON_NON_CAST_TERMS,
+    ...CANON_CAST_TERMS.filter(
+      (term) => !allowedCastLookup.has(normalizeForMatch(term))
+    )
+  ];
+
+  const contextTerms = (extra ?? []).filter((item) => {
+    const normalized = normalizeForMatch(item);
+    return !allowedCastLookup.has(normalized);
+  });
+
   return Array.from(
     new Set(
-      [...CANON_FORBIDDEN_TERMS, ...(extra ?? [])]
+      [...coreTerms, ...contextTerms]
         .map((item) => item.trim())
         .filter(Boolean)
     )
   ).slice(0, 120);
+};
+
+const SEED_STOPWORDS = new Set([
+  "about",
+  "after",
+  "again",
+  "an",
+  "and",
+  "are",
+  "around",
+  "because",
+  "been",
+  "before",
+  "being",
+  "between",
+  "both",
+  "but",
+  "can",
+  "could",
+  "does",
+  "each",
+  "for",
+  "from",
+  "have",
+  "into",
+  "just",
+  "like",
+  "maybe",
+  "more",
+  "most",
+  "need",
+  "only",
+  "over",
+  "some",
+  "than",
+  "that",
+  "the",
+  "their",
+  "them",
+  "there",
+  "these",
+  "this",
+  "those",
+  "through",
+  "under",
+  "upon",
+  "very",
+  "want",
+  "were",
+  "what",
+  "when",
+  "where",
+  "which",
+  "while",
+  "with",
+  "would",
+  "your"
+]);
+
+const extractSeedAnchors = (seed: string, notes?: string) => {
+  const source = `${seed}\n${notes ?? ""}`
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]+/g, " ");
+  const words = source.split(/\s+/).filter(Boolean);
+  const anchors: string[] = [];
+  const seen = new Set<string>();
+
+  for (const word of words) {
+    if (word.length < 4) {
+      continue;
+    }
+    if (SEED_STOPWORDS.has(word)) {
+      continue;
+    }
+    if (seen.has(word)) {
+      continue;
+    }
+    seen.add(word);
+    anchors.push(word);
+    if (anchors.length >= 12) {
+      break;
+    }
+  }
+
+  return anchors;
+};
+
+const getSeedAnchorCoverage = (text: string, anchors: string[]) => {
+  const normalizedText = normalizeForMatch(text);
+  let matched = 0;
+
+  for (const anchor of anchors) {
+    if (normalizedText.includes(anchor)) {
+      matched += 1;
+    }
+  }
+
+  const required = anchors.length >= 8 ? 3 : anchors.length >= 4 ? 2 : 1;
+  return { matched, required };
+};
+
+const ensureSeedAnchoredOutput = async (input: {
+  kind: "outline" | "draft";
+  seed: string;
+  notes?: string;
+  text: string;
+  forbiddenTerms: string[];
+  outline?: string;
+}) => {
+  const anchors = extractSeedAnchors(input.seed, input.notes);
+  if (anchors.length === 0) {
+    return input.text;
+  }
+
+  let nextText = input.text;
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const coverage = getSeedAnchorCoverage(nextText, anchors);
+    if (coverage.matched >= coverage.required) {
+      return nextText;
+    }
+
+    if (attempt === 1) {
+      break;
+    }
+
+    nextText = await runAiChat(
+      [
+        {
+          role: "system",
+          content:
+            input.kind === "outline"
+              ? "Rewrite the outline so it stays strictly anchored to the seed premise. Keep the format as a numbered 5-7 section outline with 2-4 bullets per section."
+              : "Rewrite the draft so it stays strictly anchored to the seed premise. Keep full prose narrative output only."
+        },
+        {
+          role: "user",
+          content: `Seed:
+${input.seed}
+
+${input.notes ? `Notes:\n${input.notes}\n\n` : ""}Mandatory seed anchors that must be clearly reflected:
+${anchors.join(", ")}
+
+${input.outline ? `Outline to preserve:\n${truncateForSize(input.outline, 5000)}\n\n` : ""}Previous output drifted off-seed. Rewrite it so the central conflict and details clearly match the seed anchors.
+
+Previous output:
+${truncateForSize(nextText, 5000)}`
+        }
+      ],
+      {
+        max_tokens: input.kind === "outline" ? 820 : 2200,
+        temperature: 0.65
+      }
+    );
+
+    const forbiddenMatches = collectForbiddenMatches(
+      nextText,
+      input.forbiddenTerms
+    );
+    if (forbiddenMatches.length > 0) {
+      throw new Error(
+        `Output contained forbidden canon terms: ${forbiddenMatches.join(", ")}`
+      );
+    }
+  }
+
+  throw new Error("Output drifted from seed premise and was rejected.");
 };
 
 const collectForbiddenMatches = (text: string, terms: string[]) => {
@@ -406,6 +631,8 @@ export const generateOutline = async (input: {
     length?: string;
     includeCast?: boolean | string;
     include_cast?: boolean | string;
+    allowCanon?: boolean | string;
+    allow_canon?: boolean | string;
     cast?: string[];
     brief?: string | null;
   };
@@ -413,14 +640,28 @@ export const generateOutline = async (input: {
   const includeCast = parseIncludeCastFilter(
     filters.includeCast ?? filters.include_cast
   );
+  const allowCanon = parseIncludeCastFilter(
+    filters.allowCanon ?? filters.allow_canon
+  );
 
   const canonCarryoverAllowed = allowsCanonCarryover({
+    seed: input.seed,
+    notes: input.notes,
+    allowCanon: allowCanon === true,
+    includeCast,
+    include_cast: filters.include_cast,
+    cast: filters.cast
+  });
+  const castCarryoverAllowed = allowsCastCarryover({
     seed: input.seed,
     notes: input.notes,
     includeCast,
     include_cast: filters.include_cast,
     cast: filters.cast
   });
+  const allowedCastTerms = castCarryoverAllowed
+    ? resolveAllowedCastTerms(filters.cast)
+    : [];
 
   const toneMap: Record<string, string> = {
     classic: "Classic TMA: archival, understated, formal statement voice.",
@@ -446,6 +687,11 @@ export const generateOutline = async (input: {
       : (filters.cast ?? []).length > 0
         ? "You may include 1-2 named cast members from the selected list."
         : "Keep cast minimal unless needed.";
+  const canonNote = canonCarryoverAllowed
+    ? "Direct canon references are allowed because continuation mode is enabled."
+    : castCarryoverAllowed
+      ? "Cast names may be reused, but canon entities, artifacts, and episode events are still forbidden."
+      : "Do not use canon character names, entity names, locations, artifacts, or direct callbacks from provided excerpts.";
 
   const prompt = `You are writing a Magnus Archives style episode outline.
 Use the provided transcript excerpts for tone and structure.
@@ -455,9 +701,7 @@ Cast guidance: ${castNote}
 Premise lock: the seed idea is mandatory and must drive the episode conflict.
 Originality rule: keep this story novel. Do not reuse canon episode plots or copy transcript events.
 Canon rule: ${
-    canonCarryoverAllowed
-      ? "Canon callbacks are allowed only when explicitly requested by the seed/notes."
-      : "Do not use canon character names, entity names, locations, artifacts, or direct callbacks from provided excerpts."
+    canonNote
   }
 Return a clear numbered outline with 5-7 sections, each with 2-4 bullet points.
 Avoid meta commentary.`;
@@ -474,10 +718,11 @@ Avoid meta commentary.`;
     .filter(Boolean)
     .join("\n\n");
 
-  const forbiddenTerms = buildForbiddenTerms(
-    input.forbiddenTerms,
-    canonCarryoverAllowed
-  );
+  const forbiddenTerms = buildForbiddenTerms(input.forbiddenTerms, {
+    allowCanon: canonCarryoverAllowed,
+    allowCast: castCarryoverAllowed,
+    allowedCastTerms
+  });
   const forbiddenBlock =
     forbiddenTerms.length > 0
       ? `Forbidden terms and canon references (must not appear): ${forbiddenTerms
@@ -485,7 +730,7 @@ Avoid meta commentary.`;
           .join(", ")}`
       : "";
 
-  return generateWithCanonGuard({
+  const outlineText = await generateWithCanonGuard({
     forbiddenTerms,
     options: { max_tokens: 780 },
     maxAttempts: 2,
@@ -530,6 +775,14 @@ Transcript references:\n${input.context}`
       }
     ],
   });
+
+  return ensureSeedAnchoredOutput({
+    kind: "outline",
+    seed: input.seed,
+    notes: input.notes,
+    text: outlineText,
+    forbiddenTerms
+  });
 };
 
 export const generateDraft = async (input: {
@@ -545,6 +798,8 @@ export const generateDraft = async (input: {
     length?: string;
     includeCast?: boolean | string;
     include_cast?: boolean | string;
+    allowCanon?: boolean | string;
+    allow_canon?: boolean | string;
     cast?: string[];
     brief?: string | null;
   };
@@ -552,14 +807,28 @@ export const generateDraft = async (input: {
   const includeCast = parseIncludeCastFilter(
     filters.includeCast ?? filters.include_cast
   );
+  const allowCanon = parseIncludeCastFilter(
+    filters.allowCanon ?? filters.allow_canon
+  );
 
   const canonCarryoverAllowed = allowsCanonCarryover({
+    seed: input.seed,
+    notes: input.notes,
+    allowCanon: allowCanon === true,
+    includeCast,
+    include_cast: filters.include_cast,
+    cast: filters.cast
+  });
+  const castCarryoverAllowed = allowsCastCarryover({
     seed: input.seed,
     notes: input.notes,
     includeCast,
     include_cast: filters.include_cast,
     cast: filters.cast
   });
+  const allowedCastTerms = castCarryoverAllowed
+    ? resolveAllowedCastTerms(filters.cast)
+    : [];
 
   const toneMap: Record<string, string> = {
     classic: "Classic TMA: archival, understated, formal statement voice.",
@@ -585,6 +854,11 @@ export const generateDraft = async (input: {
       : (filters.cast ?? []).length > 0
         ? "You may include 1-2 named cast members from the selected list."
         : "Keep cast minimal unless needed.";
+  const canonNote = canonCarryoverAllowed
+    ? "Direct canon references are allowed because continuation mode is enabled."
+    : castCarryoverAllowed
+      ? "Cast names may be reused, but canon entities, artifacts, and episode events are still forbidden."
+      : "Do not use canon character names, entity names, locations, artifacts, or direct callbacks from provided excerpts.";
 
   const prompt = `You are writing a Magnus Archives style episode draft.
 Use the outline and transcript excerpts for tone, pacing, and voice.
@@ -594,9 +868,7 @@ Cast guidance: ${castNote}
 Premise lock: the seed premise and the provided outline are mandatory.
 Originality rule: keep this story novel. Do not copy plot beats, scenes, entities, or phrasing from transcript references.
 Canon rule: ${
-    canonCarryoverAllowed
-      ? "Canon callbacks are allowed only where explicitly requested by the seed/notes."
-      : "Do not use canon character names, entity names, locations, artifacts, or direct callbacks from provided excerpts."
+    canonNote
   }
 Write in the voice of a formal statement and archival notes.`;
 
@@ -612,10 +884,11 @@ Write in the voice of a formal statement and archival notes.`;
     .filter(Boolean)
     .join("\n\n");
 
-  const forbiddenTerms = buildForbiddenTerms(
-    input.forbiddenTerms,
-    canonCarryoverAllowed
-  );
+  const forbiddenTerms = buildForbiddenTerms(input.forbiddenTerms, {
+    allowCanon: canonCarryoverAllowed,
+    allowCast: castCarryoverAllowed,
+    allowedCastTerms
+  });
   const forbiddenBlock =
     forbiddenTerms.length > 0
       ? `Forbidden terms and canon references (must not appear): ${forbiddenTerms
@@ -674,7 +947,14 @@ Transcript references:\n${truncateForSize(input.context, 9000)}`
   });
 
   if (isNarrativeDraftOutput(draftText)) {
-    return draftText;
+    return ensureSeedAnchoredOutput({
+      kind: "draft",
+      seed: input.seed,
+      notes: input.notes,
+      text: draftText,
+      forbiddenTerms,
+      outline: input.outline
+    });
   }
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -710,7 +990,14 @@ ${truncateForSize(draftText, 5000)}`
     });
 
     if (isNarrativeDraftOutput(draftText)) {
-      return draftText;
+      return ensureSeedAnchoredOutput({
+        kind: "draft",
+        seed: input.seed,
+        notes: input.notes,
+        text: draftText,
+        forbiddenTerms,
+        outline: input.outline
+      });
     }
   }
 

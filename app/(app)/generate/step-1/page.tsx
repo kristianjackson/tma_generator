@@ -35,6 +35,7 @@ const createRunAction = async (formData: FormData) => {
   const length = String(formData.get("length") ?? "episode").trim();
   const tone = String(formData.get("tone") ?? "classic").trim();
   const includeCast = String(formData.get("include_cast") ?? "") === "yes";
+  const allowCanon = String(formData.get("allow_canon") ?? "") === "yes";
   const fears = formData.getAll("fears").map(String);
   const cast = formData.getAll("cast").map(String);
   const motifs = formData.getAll("motifs").map(String);
@@ -89,6 +90,8 @@ const createRunAction = async (formData: FormData) => {
         tone,
         includeCast,
         include_cast: includeCast,
+        allowCanon,
+        allow_canon: allowCanon,
         fears,
         cast,
         motifs,
@@ -244,7 +247,12 @@ export default async function GenerateStepOnePage({
 
           <label className="checkbox-row">
             <input type="checkbox" name="include_cast" value="yes" defaultChecked />
-            Include established Magnus Institute cast
+            Include established Magnus cast names (style signal only)
+          </label>
+
+          <label className="checkbox-row">
+            <input type="checkbox" name="allow_canon" value="yes" />
+            Allow direct canon references (continuations and callbacks)
           </label>
 
           <div className="filter-grid">

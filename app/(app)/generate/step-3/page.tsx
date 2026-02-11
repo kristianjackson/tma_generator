@@ -129,6 +129,8 @@ const generateDraftAction = async (formData: FormData) => {
       ? "ai-missing"
       : normalizedMessage.includes("forbidden canon terms")
         ? "ai-canon-rewrite"
+      : normalizedMessage.includes("drifted from seed premise")
+        ? "ai-seed-drift"
       : normalizedMessage.includes("outline/script output")
         ? "ai-format"
       : normalizedMessage.includes("token") ||
@@ -328,6 +330,12 @@ export default async function GenerateStepThreePage({
           <p className="notice">
             AI output reused canon references and was rejected. Try regenerating
             after refining the seed or notes.
+          </p>
+        ) : null}
+        {notice === "ai-seed-drift" ? (
+          <p className="notice">
+            AI output drifted away from your seed and was rejected. Refine the
+            seed/notes and regenerate.
           </p>
         ) : null}
         {notice === "ai-too-long" ? (

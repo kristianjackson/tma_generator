@@ -10,16 +10,40 @@ type CanonPolicyInput = {
 const CONTINUATION_PATTERN =
   /(continue|continuation|sequel|follow[- ]?up|same story|same episode|pick up where)/i;
 
+const parseBooleanish = (value: unknown) => {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.toLowerCase();
+    if (["true", "yes", "1", "on"].includes(normalized)) {
+      return true;
+    }
+    if (["false", "no", "0", "off"].includes(normalized)) {
+      return false;
+    }
+  }
+
+  return undefined;
+};
+
+export const isContinuationRequest = (input: Pick<CanonPolicyInput, "seed" | "notes">) => {
+  return CONTINUATION_PATTERN.test(`${input.seed}\n${input.notes ?? ""}`);
+};
+
 export const allowsCanonCarryover = (input: CanonPolicyInput) => {
   if (input.allowCanon) {
     return true;
   }
 
-  const includeCastValue =
-    input.includeCast ??
-    (typeof input.include_cast === "string"
-      ? ["true", "yes", "1", "on"].includes(input.include_cast.toLowerCase())
-      : input.include_cast);
+  return isContinuationRequest(input);
+};
+
+export const allowsCastCarryover = (input: CanonPolicyInput) => {
+  const includeCastValue = parseBooleanish(
+    input.includeCast ?? input.include_cast
+  );
 
   if (includeCastValue) {
     return true;
@@ -29,5 +53,5 @@ export const allowsCanonCarryover = (input: CanonPolicyInput) => {
     return true;
   }
 
-  return CONTINUATION_PATTERN.test(`${input.seed}\n${input.notes ?? ""}`);
+  return false;
 };

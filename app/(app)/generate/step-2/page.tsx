@@ -112,6 +112,8 @@ const generateOutlineAction = async (formData: FormData) => {
       ? "ai-missing"
       : normalizedMessage.includes("forbidden canon terms")
         ? "ai-canon-rewrite"
+      : normalizedMessage.includes("drifted from seed premise")
+        ? "ai-seed-drift"
       : normalizedMessage.includes("token") ||
           normalizedMessage.includes("context") ||
           normalizedMessage.includes("too long") ||
@@ -307,6 +309,12 @@ export default async function GenerateStepTwoPage({
           <p className="notice">
             AI output reused canon references and was rejected. Try again with
             stricter notes or a more specific seed.
+          </p>
+        ) : null}
+        {notice === "ai-seed-drift" ? (
+          <p className="notice">
+            AI output drifted away from your seed and was rejected. Add sharper
+            notes or tighten the seed premise, then regenerate.
           </p>
         ) : null}
         {notice === "ai-too-long" ? (
